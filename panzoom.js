@@ -29,12 +29,10 @@ export const panzoom = (selector, options = {}) => {
 			elem.addEventListener("wheel", handle_wheel, { passive: false });
 		}
 		if (pan) {
-
-			console.log(elem)
 			// Touch events, needed for pinch/zoom 
-			elem.addEventListener("touchstart", handle_touchstart);
-			elem.addEventListener("touchmove", handle_touchmove);
-			elem.addEventListener("touchend", handle_touchend);
+			// elem.addEventListener("touchstart", handle_touchstart);
+			// elem.addEventListener("touchmove", handle_touchmove);
+			// elem.addEventListener("touchend", handle_touchend);
 
 			// Pointer events, needed for move
 			elem.addEventListener("pointerdown", handle_pointerdown);
@@ -195,8 +193,8 @@ export const panzoom = (selector, options = {}) => {
 		e.preventDefault();
 		e.stopPropagation();
 
-		const deltaX = e.movementX / parentScale / dprScale;		// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
-		const deltaY = e.movementY / parentScale / dprScale;		// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
+		const deltaX = e.movementX / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
+		const deltaY = e.movementY / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
 
 		do_move(e.target, deltaX, deltaY);
 
@@ -207,7 +205,6 @@ export const panzoom = (selector, options = {}) => {
 		e.stopPropagation();
 
 		e.target.style.cursor = 'crosshair'
-		console.log("Pointer Up")
 		e.target.releasePointerCapture(e.pointerId);
 	}
 
@@ -233,6 +230,7 @@ export const panzoom = (selector, options = {}) => {
 
 	function handle_touchmove(e) {
 		if (e.target !== e.currentTarget) return;
+
 		// Check if two fingers touched screen. If so, handle Zoom
 		if (e.targetTouches.length == 2 && e.changedTouches.length == 2) {
 			const distX = e.touches[0].pageX - e.touches[1].pageX;

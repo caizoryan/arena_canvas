@@ -15,7 +15,6 @@ let panning = true;
 const panzoomInstance = panzoom(".small-box", { bound: "none", scale_max: 50, pan_switch: () => panning })
 
 const Block = (block, i) => {
-
 	if (block.class != "Text") return
 
 	let x = i() % 10 * 100
@@ -24,7 +23,7 @@ const Block = (block, i) => {
 	let style = `left: ${x}px; top: ${y}px;`
 
 	let content = block.content
-	return html`.block [style=${style}] -- ${content}`
+	return html`.block [style=${style} id=${"block-" + block.id}] -- ${content}`
 }
 
 const Channel = () => {
