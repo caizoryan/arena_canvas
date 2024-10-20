@@ -16,10 +16,7 @@ export const panzoom = (selector, options = {}) => {
 	let vvpScale, dprScale;			// Needed to take into account e.movementX in touch screens
 
 	// For touching devies
-	let lastTouchX, lastTouchY;		// To calculate delta position when moving fingers
-	let isPinching = false;
 	let isTouching = false;
-	let pinch_dist1;
 
 	// Attach event listeners
 	document.querySelectorAll(':scope ' + selector).forEach((elem) => {
@@ -36,11 +33,6 @@ export const panzoom = (selector, options = {}) => {
 			: null
 
 		if (pan) {
-			// Touch events, needed for pinch/zoom 
-			// elem.addEventListener("touchstart", handle_touchstart);
-			// elem.addEventListener("touchmove", handle_touchmove);
-			// elem.addEventListener("touchend", handle_touchend);
-
 			// Pointer events, needed for move
 			elem.addEventListener("pointerdown", handle_pointerdown);
 			elem.addEventListener("pointerup", handle_pointerup);
@@ -193,7 +185,6 @@ export const panzoom = (selector, options = {}) => {
 
 	function handle_pointermove(e) {
 		if (e.target !== e.currentTarget) return;
-		if (isTouching) return;
 		if (!e.target.hasPointerCapture(e.pointerId)) return;
 		let pann = typeof pan_switch === 'function' ? pan_switch() : pan_switch;
 		if (!pann) return;
@@ -211,69 +202,10 @@ export const panzoom = (selector, options = {}) => {
 		e.preventDefault();
 		e.stopPropagation();
 
-		e.target.style.cursor = 'crosshair'
+		e.target.style.cursor = ''
 		e.target.releasePointerCapture(e.pointerId);
 	}
 
-	function handle_touchstart(e) {
-		if (e.target !== e.currentTarget) return;
-		e.preventDefault();
-		e.stopPropagation();
-		isTouching = true;
-
-		// Check if two fingers touched screen. If so, handle Zoom
-		if (e.targetTouches.length == 2) {
-			isPinching = true;
-			pinch_dist1 = Math.hypot( //get rough estimate of distance between two fingers
-				e.touches[0].pageX - e.touches[1].pageX,
-				e.touches[0].pageY - e.touches[1].pageY
-			);
-		}
-
-		lastTouchX = e.touches[0].pageX;
-		lastTouchY = e.touches[0].pageY;
-
-	}
-
-	function handle_touchmove(e) {
-		if (e.target !== e.currentTarget) return;
-
-		// Check if two fingers touched screen. If so, handle Zoom
-		if (e.targetTouches.length == 2 && e.changedTouches.length == 2) {
-			const distX = e.touches[0].pageX - e.touches[1].pageX;
-			const distY = e.touches[0].pageY - e.touches[1].pageY;
-			const pinch_dist2 = Math.hypot(distX, distY); //get rough estimation of new distance between fingers
-			const deltaScale = (pinch_dist2 - pinch_dist1) / 50;
-			pinch_dist1 = pinch_dist2;
-
-			const { x, y, width, height } = e.target.getBoundingClientRect();
-
-			const offsetX0 = (e.touches[0].clientX - x) / width * e.target.offsetWidth;
-			const offsetY0 = (e.touches[0].clientY - y) / height * e.target.offsetHeight;
-			const offsetX1 = (e.touches[1].clientX - x) / width * e.target.offsetWidth;
-			const offsetY1 = (e.touches[1].clientY - y) / height * e.target.offsetHeight;
-			const offsetX = offsetX0 + (offsetX1 - offsetX0) / 2;
-			const offsetY = offsetY0 + (offsetY1 - offsetY0) / 2;
-
-			do_zoom(e.target, deltaScale, offsetX, offsetY);
-		}
-		else if (e.targetTouches.length == 1 && !isPinching) {
-			const deltaX = (e.touches[0].pageX - lastTouchX) / parentScale;		// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
-			const deltaY = (e.touches[0].pageY - lastTouchY) / parentScale;		//
-			lastTouchX = e.touches[0].pageX;
-			lastTouchY = e.touches[0].pageY;
-			// Else, it is a drag. Handle with pointermouse event
-
-			do_move(e.target, deltaX, deltaY);
-		}
-	}
-
-	function handle_touchend(e) {
-		if (e.targetTouches.length == 0) {
-			isTouching = false;
-			isPinching = false;
-		}
-	}
 
 	function handle_wheel(e) {
 		e.preventDefault();
@@ -295,5 +227,66 @@ export const panzoom = (selector, options = {}) => {
 		do_zoom(this, deltaScale, e.offsetX, e.offsetY);
 	}
 
+
 	return (true);
 };
+
+// function handle_touchstart(e) {
+// 	if (e.target !== e.currentTarget) return;
+// 	e.preventDefault();
+// 	e.stopPropagation();
+// 	isTouching = true;
+//
+// 	// Check if two fingers touched screen. If so, handle Zoom
+// 	if (e.targetTouches.length == 2) {
+// 		isPinching = true;
+// 		pinch_dist1 = Math.hypot( //get rough estimate of distance between two fingers
+// 			e.touches[0].pageX - e.touches[1].pageX,
+// 			e.touches[0].pageY - e.touches[1].pageY
+// 		);
+// 	}
+//
+// 	lastTouchX = e.touches[0].pageX;
+// 	lastTouchY = e.touches[0].pageY;
+//
+// }
+//
+// function handle_touchmove(e) {
+// 	if (e.target !== e.currentTarget) return;
+//
+// 	// Check if two fingers touched screen. If so, handle Zoom
+// 	if (e.targetTouches.length == 2 && e.changedTouches.length == 2) {
+// 		const distX = e.touches[0].pageX - e.touches[1].pageX;
+// 		const distY = e.touches[0].pageY - e.touches[1].pageY;
+// 		const pinch_dist2 = Math.hypot(distX, distY); //get rough estimation of new distance between fingers
+// 		const deltaScale = (pinch_dist2 - pinch_dist1) / 50;
+// 		pinch_dist1 = pinch_dist2;
+//
+// 		const { x, y, width, height } = e.target.getBoundingClientRect();
+//
+// 		const offsetX0 = (e.touches[0].clientX - x) / width * e.target.offsetWidth;
+// 		const offsetY0 = (e.touches[0].clientY - y) / height * e.target.offsetHeight;
+// 		const offsetX1 = (e.touches[1].clientX - x) / width * e.target.offsetWidth;
+// 		const offsetY1 = (e.touches[1].clientY - y) / height * e.target.offsetHeight;
+// 		const offsetX = offsetX0 + (offsetX1 - offsetX0) / 2;
+// 		const offsetY = offsetY0 + (offsetY1 - offsetY0) / 2;
+//
+// 		do_zoom(e.target, deltaScale, offsetX, offsetY);
+// 	}
+// 	else if (e.targetTouches.length == 1 && !isPinching) {
+// 		const deltaX = (e.touches[0].pageX - lastTouchX) / parentScale;		// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
+// 		const deltaY = (e.touches[0].pageY - lastTouchY) / parentScale;		//
+// 		lastTouchX = e.touches[0].pageX;
+// 		lastTouchY = e.touches[0].pageY;
+// 		// Else, it is a drag. Handle with pointermouse event
+//
+// 		do_move(e.target, deltaX, deltaY);
+// 	}
+// }
+//
+// function handle_touchend(e) {
+// 	if (e.targetTouches.length == 0) {
+// 		isTouching = false;
+// 		isPinching = false;
+// 	}
+// }
