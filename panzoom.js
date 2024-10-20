@@ -25,9 +25,16 @@ export const panzoom = (selector, options = {}) => {
 	document.querySelectorAll(':scope ' + selector).forEach((elem) => {
 		let isValid = normalize(elem);
 		if (!isValid) return;
-		if (zoom) {
-			elem.addEventListener("wheel", handle_wheel, { passive: false });
-		}
+		elem.addEventListener("wheel", handle_wheel, { passive: false });
+		elem.just_handle_the_wheel = just_handle_the_wheel;
+
+		elem.set_left == undefined ?
+			elem.set_left = (left) => { elem.style.left = left + 'px'; }
+			: null
+		elem.set_top == undefined ?
+			elem.set_top = (top) => { elem.style.top = top + 'px'; }
+			: null
+
 		if (pan) {
 			// Touch events, needed for pinch/zoom 
 			// elem.addEventListener("touchstart", handle_touchstart);
@@ -72,8 +79,8 @@ export const panzoom = (selector, options = {}) => {
 			lastPosY = Math.min(Math.max(posY_min, lastPosY), posY_max);	// Restrict Pos Y	
 		}
 
-		elem.style.left = lastPosX + 'px';
-		elem.style.top = lastPosY + 'px';
+		elem.set_left(lastPosX);
+		elem.set_top(lastPosY);
 	}
 
 	function do_zoom(elem, deltaScale, offsetX, offsetY) {
@@ -137,8 +144,8 @@ export const panzoom = (selector, options = {}) => {
 		const transform = `matrix(${newScale}, ${skewY}, ${skewX}, ${newScale}, ${translateX}, ${translateY})`;
 		elem.style.transform = transform;
 
-		elem.style.left = posX + 'px';
-		elem.style.top = posY + 'px';
+		elem.set_left(posX);
+		elem.set_top(posY);
 	}
 
 	function handle_pointerdown(e) {
@@ -272,9 +279,20 @@ export const panzoom = (selector, options = {}) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (e.target !== e.currentTarget) return;
+		if (!zoom) {
+			console.log(e.target.parentNode)
+			if (e.target.parentNode.just_handle_the_wheel) e.target.parentNode.just_handle_the_wheel(e);
+		} else {
+			const deltaScale = e.wheelDelta * wheel_step / 120;
+			do_zoom(e.target, deltaScale, e.offsetX, e.offsetY);
+		}
 
+	}
+
+	function just_handle_the_wheel(e) {
+		e.preventDefault();
 		const deltaScale = e.wheelDelta * wheel_step / 120;
-		do_zoom(e.target, deltaScale, e.offsetX, e.offsetY);
+		do_zoom(this, deltaScale, e.offsetX, e.offsetY);
 	}
 
 	return (true);
