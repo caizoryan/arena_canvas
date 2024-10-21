@@ -15,30 +15,31 @@ export const panzoom = (selector, options = {}) => {
 	let parentScale; 						// Needed for avoid calculate every pointermove
 	let vvpScale, dprScale;			// Needed to take into account e.movementX in touch screens
 
-	// For touching devies
-	let isTouching = false;
-
 	// Attach event listeners
-	document.querySelectorAll(':scope ' + selector).forEach((elem) => {
-		let isValid = normalize(elem);
-		if (!isValid) return;
-		elem.addEventListener("wheel", handle_wheel, { passive: false });
-		elem.just_handle_the_wheel = just_handle_the_wheel;
+	let elem = document.querySelector(selector);
+	console.log(elem)
+	let isValid = normalize(elem);
+	if (!isValid) return;
 
-		elem.set_left == undefined ?
-			elem.set_left = (left) => { elem.style.left = left + 'px'; }
-			: null
-		elem.set_top == undefined ?
-			elem.set_top = (top) => { elem.style.top = top + 'px'; }
-			: null
+	elem.addEventListener("wheel", handle_wheel, { passive: false });
+	elem.just_handle_the_wheel = just_handle_the_wheel;
+	elem.do_move = do_move;
+	elem.do_zoom = do_zoom;
+	elem.go_to = go_to;
 
-		if (pan) {
-			// Pointer events, needed for move
-			elem.addEventListener("pointerdown", handle_pointerdown);
-			elem.addEventListener("pointerup", handle_pointerup);
-			elem.addEventListener("pointermove", handle_pointermove);
-		}
-	});
+	elem.set_left == undefined ?
+		elem.set_left = (left) => { elem.style.left = left + 'px'; }
+		: null
+	elem.set_top == undefined ?
+		elem.set_top = (top) => { elem.style.top = top + 'px'; }
+		: null
+
+	if (pan) {
+		// Pointer events, needed for move
+		elem.addEventListener("pointerdown", handle_pointerdown);
+		elem.addEventListener("pointerup", handle_pointerup);
+		elem.addEventListener("pointermove", handle_pointermove);
+	}
 
 	function normalize(elem) {
 		const width = elem.offsetWidth;
@@ -62,7 +63,7 @@ export const panzoom = (selector, options = {}) => {
 		return true;
 	}
 
-	function do_move(elem, deltaX, deltaY) {
+	function do_move(deltaX, deltaY) {
 		lastPosX += deltaX;		// Needed because of decimals
 		lastPosY += deltaY;		// Needed because of decimals
 
@@ -75,10 +76,31 @@ export const panzoom = (selector, options = {}) => {
 		elem.set_top(lastPosY);
 	}
 
-	function do_zoom(elem, deltaScale, offsetX, offsetY) {
+	function go_to(x, y) {
+		elem.set_left(-x);
+		elem.set_top(-y);
+	}
+
+
+	function go_zoom(scale) {
 		const matrix = new WebKitCSSMatrix(getComputedStyle(elem).getPropertyValue("transform"));
 		const { a: scaleX, b: skewY, c: skewX, d: scaleY, e: translateX, f: translateY } = matrix;
-		const { x, y, width, height } = elem.getBoundingClientRect();
+
+		let posX, posY;
+
+		posX = elem.offsetLeft + scale * (elem.offsetWidth / 2 - 15);
+		posY = elem.offsetTop + scale * (elem.offsetHeight / 2 - 15);
+
+		const transform = `matrix(${scale}, ${skewY}, ${skewX}, ${scale}, ${translateX}, ${translateY})`;
+		elem.style.transform = transform;
+
+		elem.set_left(posX);
+		elem.set_top(posY);
+	}
+
+	function do_zoom(deltaScale, offsetX, offsetY) {
+		const matrix = new WebKitCSSMatrix(getComputedStyle(elem).getPropertyValue("transform"));
+		const { a: scaleX, b: skewY, c: skewX, d: scaleY, e: translateX, f: translateY } = matrix;
 		const { x: xp, y: yp, width: widthp, height: heightp } = elem.parentNode.getBoundingClientRect();
 
 		deltaScale *= scaleX;	// Smooth deltaScale 
@@ -105,6 +127,17 @@ export const panzoom = (selector, options = {}) => {
 		else if (bound == 'none') {
 			if (newScale < scale_min || newScale > scale_max) deltaScale = 0;
 			newScale = Math.min(Math.max(scale_min, newScale), scale_max);
+		}
+
+		if (!offsetX || !offsetY) {
+			offsetX = 15;
+			offsetY = 15;
+
+			console.log("offsetX", offsetX)
+			console.log("offsetY", offsetY)
+		} else {
+			console.log("offsetX", offsetX)
+			console.log("offsetY", offsetY)
 		}
 
 		posX = elem.offsetLeft + deltaScale * (elem.offsetWidth / 2 - offsetX);
@@ -135,6 +168,8 @@ export const panzoom = (selector, options = {}) => {
 
 		const transform = `matrix(${newScale}, ${skewY}, ${skewX}, ${newScale}, ${translateX}, ${translateY})`;
 		elem.style.transform = transform;
+
+		if (!offsetX || !offsetY) return;
 
 		elem.set_left(posX);
 		elem.set_top(posY);
@@ -194,8 +229,7 @@ export const panzoom = (selector, options = {}) => {
 		const deltaX = e.movementX / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
 		const deltaY = e.movementY / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
 
-		do_move(e.target, deltaX, deltaY);
-
+		do_move(deltaX, deltaY);
 	}
 
 	function handle_pointerup(e) {
@@ -216,77 +250,19 @@ export const panzoom = (selector, options = {}) => {
 			if (e.target.parentNode.just_handle_the_wheel) e.target.parentNode.just_handle_the_wheel(e);
 		} else {
 			const deltaScale = e.wheelDelta * wheel_step / 120;
-			do_zoom(e.target, deltaScale, e.offsetX, e.offsetY);
+			do_zoom(deltaScale, e.offsetX, e.offsetY);
 		}
 
 	}
 
 	function just_handle_the_wheel(e) {
+		console.log("called", e)
 		e.preventDefault();
 		const deltaScale = e.wheelDelta * wheel_step / 120;
-		do_zoom(this, deltaScale, e.offsetX, e.offsetY);
+		this.do_zoom(deltaScale, e.offsetX, e.offsetY);
 	}
 
 
-	return (true);
+	return { go_to, do_move, do_zoom, go_zoom };
 };
 
-// function handle_touchstart(e) {
-// 	if (e.target !== e.currentTarget) return;
-// 	e.preventDefault();
-// 	e.stopPropagation();
-// 	isTouching = true;
-//
-// 	// Check if two fingers touched screen. If so, handle Zoom
-// 	if (e.targetTouches.length == 2) {
-// 		isPinching = true;
-// 		pinch_dist1 = Math.hypot( //get rough estimate of distance between two fingers
-// 			e.touches[0].pageX - e.touches[1].pageX,
-// 			e.touches[0].pageY - e.touches[1].pageY
-// 		);
-// 	}
-//
-// 	lastTouchX = e.touches[0].pageX;
-// 	lastTouchY = e.touches[0].pageY;
-//
-// }
-//
-// function handle_touchmove(e) {
-// 	if (e.target !== e.currentTarget) return;
-//
-// 	// Check if two fingers touched screen. If so, handle Zoom
-// 	if (e.targetTouches.length == 2 && e.changedTouches.length == 2) {
-// 		const distX = e.touches[0].pageX - e.touches[1].pageX;
-// 		const distY = e.touches[0].pageY - e.touches[1].pageY;
-// 		const pinch_dist2 = Math.hypot(distX, distY); //get rough estimation of new distance between fingers
-// 		const deltaScale = (pinch_dist2 - pinch_dist1) / 50;
-// 		pinch_dist1 = pinch_dist2;
-//
-// 		const { x, y, width, height } = e.target.getBoundingClientRect();
-//
-// 		const offsetX0 = (e.touches[0].clientX - x) / width * e.target.offsetWidth;
-// 		const offsetY0 = (e.touches[0].clientY - y) / height * e.target.offsetHeight;
-// 		const offsetX1 = (e.touches[1].clientX - x) / width * e.target.offsetWidth;
-// 		const offsetY1 = (e.touches[1].clientY - y) / height * e.target.offsetHeight;
-// 		const offsetX = offsetX0 + (offsetX1 - offsetX0) / 2;
-// 		const offsetY = offsetY0 + (offsetY1 - offsetY0) / 2;
-//
-// 		do_zoom(e.target, deltaScale, offsetX, offsetY);
-// 	}
-// 	else if (e.targetTouches.length == 1 && !isPinching) {
-// 		const deltaX = (e.touches[0].pageX - lastTouchX) / parentScale;		// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
-// 		const deltaY = (e.touches[0].pageY - lastTouchY) / parentScale;		//
-// 		lastTouchX = e.touches[0].pageX;
-// 		lastTouchY = e.touches[0].pageY;
-// 		// Else, it is a drag. Handle with pointermouse event
-//
-// 		do_move(e.target, deltaX, deltaY);
-// 	}
-// }
-//
-// function handle_touchend(e) {
-// 	if (e.targetTouches.length == 0) {
-// 		isTouching = false;
-// 		isPinching = false;
-// 	}
-// }
