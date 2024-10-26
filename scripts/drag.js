@@ -3,6 +3,8 @@ export const drag = (elem, options = {}) => {
 	const pan = options.pan !== false;
 	const pan_switch = options.pan_switch ? options.pan_switch : true;	// Default: true
 	const bound = (['inner', 'outer', 'none'].includes(options.bound)) ? options.bound : 'inner';
+	const set_left = options.set_left ? options.set_left : (left) => { elem.style.left = left + "px"; };
+	const set_top = options.set_top ? options.set_top : (top) => { elem.style.top = top + "px"; };
 
 	// For panning (translate)
 	let lastPosX, lastPosY;					// Needed because of decimals 
@@ -14,12 +16,6 @@ export const drag = (elem, options = {}) => {
 	if (!isValid) return;
 
 	elem.do_move = do_move;
-	elem.set_pos == undefined ?
-		elem.set_pos = (left, top) => {
-			// elem.style.transform = `translate(${left}px, ${top}px)`;
-			elem.style.left = left + "px";
-			elem.style.top = top + "px";
-		} : null
 
 	if (pan) {
 		// Pointer events, needed for move
@@ -55,7 +51,9 @@ export const drag = (elem, options = {}) => {
 			lastPosX = Math.min(Math.max(posX_min, lastPosX), posX_max);	// Restrict Pos X
 			lastPosY = Math.min(Math.max(posY_min, lastPosY), posY_max);	// Restrict Pos Y	
 		}
-		elem.set_pos(lastPosX, lastPosY);
+
+		set_left(lastPosX);
+		set_top(lastPosY);
 	}
 
 
@@ -115,6 +113,7 @@ export const drag = (elem, options = {}) => {
 	function handle_pointerup(e) {
 		e.preventDefault();
 		e.stopPropagation();
+		e.target.style.cursor = ''
 		e.target.releasePointerCapture(e.pointerId);
 	}
 
