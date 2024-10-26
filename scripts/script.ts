@@ -1,4 +1,4 @@
-import { get_channel } from "./arena.js";
+import { get_channel } from "./arena";
 import { createPanZoom } from "./panzoom/panzoom.js"
 import { render, mut, mem, sig, html, mounted, eff_on } from "./solid_monke/solid_monke.js"
 import { drag } from "./drag.js";
@@ -8,76 +8,60 @@ let channel_slug = "reading-week-fall-2024"
 let channel = mut({ contents: [] })
 let size = 500
 
-let lastPosX = 0;
-let lastPosY = 0;
-
 let small_box = document.querySelector(".small-box")
 let recter = document.querySelector(".small-box-recter") as HTMLElement
+
 let panzoom = createPanZoom(small_box, {})
-let rected = {
-	x: 0,
-	y: 0,
-	width: 0,
-	height: 0
-}
+
+type RectEvent = (x: number, y: number, w: number, h: number) => void
+let rect_event: (null | RectEvent) = null
 
 let rectange_maker = (elem) => {
 	// For panning (translate)
-	let lastPosX, lastPosY;					// Needed because of decimals 
-	let parentScale; 						// Needed for avoid calculate every pointermove
-	let ogX, ogY;							// Needed for avoid calculate every pointermove
+	let lastPosX: number, lastPosY: number;					// Needed because of decimals 
+	let parentScale: number; 						// Needed for avoid calculate every pointermove
+	let ogX: number, ogY: number;							// Needed for avoid calculate every pointermove
 
-	let rect
+	let rect: HTMLElement | null = null
+
 	elem.addEventListener("pointerdown", handle_pointerdown);
 	elem.addEventListener("pointerup", handle_pointerup);
 	elem.addEventListener("pointermove", handle_pointermove);
 
-	function do_move(deltaX, deltaY) {
+	function do_move(deltaX: number, deltaY: number) {
 		lastPosX += deltaX;		// Needed because of decimals
 		lastPosY += deltaY;		// Needed because of decimals
-		let w, h, x, y
+		let w: number, h: number, x: number, y: number
 
-		if (lastPosX > ogX) {
-			w = lastPosX - ogX;
-			x = ogX
-		} else {
-			w = ogX - lastPosX;
-			x = lastPosX
-		}
-		if (lastPosY > ogY) {
-			h = lastPosY - ogY;
-			y = ogY
-		} else {
-			h = ogY - lastPosY;
-			y = lastPosY
-		}
+		if (lastPosX > ogX) { w = lastPosX - ogX; x = ogX }
+		else { w = ogX - lastPosX; x = lastPosX }
 
-		rect.style.width = w + "px"
-		rect.style.height = h + "px"
-		rect.style.left = x + "px"
-		rect.style.top = y + "px"
+		if (lastPosY > ogY) { h = lastPosY - ogY; y = ogY }
+		else { h = ogY - lastPosY; y = lastPosY }
+
+		if (rect) {
+			rect.style.width = w + "px"
+			rect.style.height = h + "px"
+			rect.style.left = x + "px"
+			rect.style.top = y + "px"
+		}
 	}
 
 
 	function handle_pointerdown(e) {
 		if (e.target !== e.currentTarget) return;
-		e.preventDefault();
-		e.stopPropagation();
+		e.preventDefault(); e.stopPropagation();
 
-		e.target.style.cursor = 'none'
+		e.target.style.cursor = 'crosshair'
 
-		// Set Last Element Position. Needed because event offset doesn't have decimals. And decimals will be needed when dragging
-		ogX = e.offsetX;
-		ogY = e.offsetY;
-		lastPosX = e.offsetX;
-		lastPosY = e.offsetY;
+		ogX = e.offsetX; ogY = e.offsetY;
+		lastPosX = ogX; lastPosY = ogY;
 
-		// Set Position Bounds
 		const { width: pwidth1 } = e.target.parentNode.getBoundingClientRect();
 		const pwidth2 = e.target.parentNode.offsetWidth;
 		parentScale = pwidth1 / pwidth2;
 
-		let bor = 5
+		let bor = 10
 
 		rect = document.createElement("div")
 		rect.style.position = "absolute"
@@ -111,38 +95,39 @@ let rectange_maker = (elem) => {
 		e.target.style.cursor = ''
 		e.target.releasePointerCapture(e.pointerId);
 
+		if (rect) {
+			let x = parseFloat(rect.style.left)
+			let y = parseFloat(rect.style.top)
+			let w = parseFloat(rect.style.width)
+			let h = parseFloat(rect.style.height)
 
-		// display none for recter
-		// panzoom resume
-		// panzoom zoom to rect
+			rect?.remove()
+			rect = null
 
-		let x = parseFloat(rect.style.left)
-		let y = parseFloat(rect.style.top)
-		let w = parseFloat(rect.style.width)
-		let h = parseFloat(rect.style.height)
+			recter.style.display = "none"
+			panzoom.resume()
 
-		rect?.remove()
-		rect = null
+			if ("function" == typeof rect_event) rect_event(x, y, w, h)
+		}
 
-		recter.style.display = "none"
-		panzoom.resume()
-		panzoom.showRectangle({
-			top: y,
-			left: x,
-			right: x + w,
-			bottom: y + h
-		})
 	}
 }
 
 rectange_maker(recter)
 
+type BlockCache = {
+	pos: {
+		x: number,
+		y: number
+	}
+}
+
 get_channel(channel_slug).then((c) => {
-	let blocks = localStorage.getItem(channel_slug)
-	if (blocks) {
-		blocks = JSON.parse(blocks)
+	let blocks_cache = localStorage.getItem(channel_slug)
+	if (blocks_cache) {
+		let blocks: BlockCache = JSON.parse(blocks_cache)
 		Object.entries(blocks).forEach(([id, pos]) => {
-			let block = c.contents.find((b) => b.id == id)
+			let block = c.contents.find((b) => b.id == parseInt(id))
 			block.x = pos.x
 			block.y = pos.y
 		})
@@ -153,6 +138,38 @@ get_channel(channel_slug).then((c) => {
 })
 
 let panning = sig(true);
+
+function intersecting(a, b) {
+	return (a.left <= b.right &&
+		b.left <= a.right &&
+		a.top <= b.bottom &&
+		b.top <= a.bottom)
+}
+
+let intersecting_blocks = (x, y, w, h) => {
+	channel.contents.forEach((block) => {
+		let elem = document.getElementById("block-" + block.id)
+		if (!elem) return
+
+		let rect = {
+			left: parseFloat(elem.style.left),
+			top: parseFloat(elem.style.top),
+			right: parseFloat(elem.style.left) + size,
+			bottom: parseFloat(elem.style.top) + size
+		}
+
+		let other = {
+			left: x,
+			top: y,
+			right: x + w,
+			bottom: y + h
+		}
+
+		if (intersecting(rect, other)) {
+			elem.style.backgroundColor = "red"
+		}
+	})
+}
 
 let css = {}
 
@@ -174,7 +191,7 @@ const Block = (block, i) => {
 	if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style, onmount)
 }
 
-const ImageBlock = (block, style, onmount) => {
+const ImageBlock = (block, style: Function, onmount: () => void) => {
 	let image = block.image
 	css[block.id] = style
 	mounted(onmount)
@@ -205,15 +222,42 @@ function save_block_coordinates() {
 	localStorage.setItem(channel_slug, JSON.stringify(blocks))
 }
 
+
+
 document.addEventListener("keydown", (e) => {
 	if (e.key === "h") {
+	}
+
+	if (e.key === "z") {
 		if (recter.style.display == "block") {
 			recter.style.display = "none"
 			panzoom.resume()
 		} else {
+			rect_event = (x, y, w, h) => {
+				let r = {
+					top: y,
+					left: x,
+					right: x + w,
+					bottom: y + h
+				}
+
+				panzoom.showRectangle(r)
+			}
 			recter.style.display = "block"
 			panzoom.pause()
 		}
+	}
+
+	if (e.key === "v") {
+		if (recter.style.display == "block") {
+			recter.style.display = "none"
+			panzoom.resume()
+		} else {
+			rect_event = intersecting_blocks
+			recter.style.display = "block"
+			panzoom.pause()
+		}
+
 	}
 
 	if (e.key == "=" && (e.metaKey || e.ctrlKey)) {

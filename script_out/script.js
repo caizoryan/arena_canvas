@@ -1,10 +1,9 @@
 // scripts/auth.js
 var auth = "";
 
-// scripts/arena.js
+// scripts/arena.ts
 var host = "http://localhost:3000/api/";
 var get_channel = async (slug) => {
-  console.log("get channel called", slug);
   return await fetch(host + `channels/${slug}?per=100&force=true`, {
     headers: {
       Authorization: `Bearer ${auth}`,
@@ -3080,11 +3079,12 @@ var size = 500;
 var small_box = document.querySelector(".small-box");
 var recter = document.querySelector(".small-box-recter");
 var panzoom = createPanZoom(small_box, {});
+var rect_event = null;
 var rectange_maker = (elem) => {
   let lastPosX, lastPosY;
   let parentScale;
   let ogX, ogY;
-  let rect;
+  let rect = null;
   elem.addEventListener("pointerdown", handle_pointerdown);
   elem.addEventListener("pointerup", handle_pointerup);
   elem.addEventListener("pointermove", handle_pointermove);
@@ -3106,24 +3106,26 @@ var rectange_maker = (elem) => {
       h3 = ogY - lastPosY;
       y = lastPosY;
     }
-    rect.style.width = w + "px";
-    rect.style.height = h3 + "px";
-    rect.style.left = x + "px";
-    rect.style.top = y + "px";
+    if (rect) {
+      rect.style.width = w + "px";
+      rect.style.height = h3 + "px";
+      rect.style.left = x + "px";
+      rect.style.top = y + "px";
+    }
   }
   function handle_pointerdown(e) {
     if (e.target !== e.currentTarget) return;
     e.preventDefault();
     e.stopPropagation();
-    e.target.style.cursor = "none";
+    e.target.style.cursor = "crosshair";
     ogX = e.offsetX;
     ogY = e.offsetY;
-    lastPosX = e.offsetX;
-    lastPosY = e.offsetY;
+    lastPosX = ogX;
+    lastPosY = ogY;
     const { width: pwidth1 } = e.target.parentNode.getBoundingClientRect();
     const pwidth2 = e.target.parentNode.offsetWidth;
     parentScale = pwidth1 / pwidth2;
-    let bor = 5;
+    let bor = 10;
     rect = document.createElement("div");
     rect.style.position = "absolute";
     rect.style.left = e.offsetX + "px";
@@ -3149,29 +3151,26 @@ var rectange_maker = (elem) => {
     e.stopPropagation();
     e.target.style.cursor = "";
     e.target.releasePointerCapture(e.pointerId);
-    let x = parseFloat(rect.style.left);
-    let y = parseFloat(rect.style.top);
-    let w = parseFloat(rect.style.width);
-    let h3 = parseFloat(rect.style.height);
-    rect?.remove();
-    rect = null;
-    recter.style.display = "none";
-    panzoom.resume();
-    panzoom.showRectangle({
-      top: y,
-      left: x,
-      right: x + w,
-      bottom: y + h3
-    });
+    if (rect) {
+      let x = parseFloat(rect.style.left);
+      let y = parseFloat(rect.style.top);
+      let w = parseFloat(rect.style.width);
+      let h3 = parseFloat(rect.style.height);
+      rect?.remove();
+      rect = null;
+      recter.style.display = "none";
+      panzoom.resume();
+      if ("function" == typeof rect_event) rect_event(x, y, w, h3);
+    }
   }
 };
 rectange_maker(recter);
 get_channel(channel_slug).then((c) => {
-  let blocks = localStorage.getItem(channel_slug);
-  if (blocks) {
-    blocks = JSON.parse(blocks);
+  let blocks_cache = localStorage.getItem(channel_slug);
+  if (blocks_cache) {
+    let blocks = JSON.parse(blocks_cache);
     Object.entries(blocks).forEach(([id, pos]) => {
-      let block = c.contents.find((b) => b.id == id);
+      let block = c.contents.find((b) => b.id == parseInt(id));
       block.x = pos.x;
       block.y = pos.y;
     });
@@ -3179,6 +3178,30 @@ get_channel(channel_slug).then((c) => {
   channel.contents = c.contents;
 });
 var panning = sig(true);
+function intersecting(a, b) {
+  return a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom;
+}
+var intersecting_blocks = (x, y, w, h3) => {
+  channel.contents.forEach((block) => {
+    let elem = document.getElementById("block-" + block.id);
+    if (!elem) return;
+    let rect = {
+      left: parseFloat(elem.style.left),
+      top: parseFloat(elem.style.top),
+      right: parseFloat(elem.style.left) + size,
+      bottom: parseFloat(elem.style.top) + size
+    };
+    let other = {
+      left: x,
+      top: y,
+      right: x + w,
+      bottom: y + h3
+    };
+    if (intersecting(rect, other)) {
+      elem.style.backgroundColor = "red";
+    }
+  });
+};
 var css = {};
 var Block = (block, i) => {
   let x = sig(i() % 10 * size + 10);
@@ -3221,10 +3244,31 @@ function save_block_coordinates() {
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "h") {
+  }
+  if (e.key === "z") {
     if (recter.style.display == "block") {
       recter.style.display = "none";
       panzoom.resume();
     } else {
+      rect_event = (x, y, w, h3) => {
+        let r = {
+          top: y,
+          left: x,
+          right: x + w,
+          bottom: y + h3
+        };
+        panzoom.showRectangle(r);
+      };
+      recter.style.display = "block";
+      panzoom.pause();
+    }
+  }
+  if (e.key === "v") {
+    if (recter.style.display == "block") {
+      recter.style.display = "none";
+      panzoom.resume();
+    } else {
+      rect_event = intersecting_blocks;
       recter.style.display = "block";
       panzoom.pause();
     }

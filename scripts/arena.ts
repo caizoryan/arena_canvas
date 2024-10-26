@@ -2,9 +2,21 @@ import { auth } from "./auth.js";
 
 let host = "http://localhost:3000/api/";
 
+type Channel = {
+  id: number;
+  slug: string;
+  title: string;
+  contents: [Block | Channel];
+}
+
+type Block = {
+  id: number;
+  content: string;
+  title: string;
+}
+
 // API functions
-export const get_channel = async (slug) => {
-  console.log("get channel called", slug);
+export const get_channel = async (slug: string): Promise<Channel> => {
   return await fetch(host + `channels/${slug}?per=100&force=true`, {
     headers: {
       Authorization: `Bearer ${auth}`,
