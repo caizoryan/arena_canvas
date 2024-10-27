@@ -57,6 +57,7 @@ export const drag = (elem, options = {}) => {
 	}
 
 
+
 	function handle_pointerdown(e) {
 		if (e.target !== e.currentTarget) return;
 		let pann = typeof pan_switch === 'function' ? pan_switch() : pan_switch;

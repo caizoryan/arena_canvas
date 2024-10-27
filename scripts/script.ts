@@ -5,6 +5,7 @@ import { drag } from "./drag.js";
 
 let channel_slug = "reading-week-fall-2024"
 
+let selected = sig([])
 let channel = mut({ contents: [] })
 let size = 500
 
@@ -165,10 +166,10 @@ let intersecting_blocks = (x, y, w, h) => {
 			bottom: y + h
 		}
 
-		if (intersecting(rect, other)) {
-			elem.style.backgroundColor = "red"
-		}
+		if (intersecting(rect, other)) selected.set([...selected(), block.id])
+
 	})
+	group_selected()
 }
 
 let css = {}
@@ -180,12 +181,14 @@ const Block = (block, i) => {
 	if (block.x) x.set(parseFloat(block.x))
 	if (block.y) y.set(parseFloat(block.y))
 
+
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
 		drag(elem, { set_left: x.set, set_top: y.set })
 	}
 
-	let style = mem(() => `left:${x()}px; top:${y()}px; width:${size}px; height:${size}px;`)
+	let block_selected = mem(() => selected().includes(block.id))
+	let style = mem(() => `left:${x()}px; top:${y()}px; width:${size}px; height:${size}px;background-color:${block_selected() ? "red" : "white"}`)
 
 	if (block.class == "Text") return TextBlock(block, style, onmount)
 	if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style, onmount)
@@ -274,6 +277,10 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "2") {
 	}
 
+	if (e.key === "Escape") {
+		selected.set([])
+	}
+
 	if (e.key === "ArrowRight") {
 	}
 
@@ -290,5 +297,41 @@ document.addEventListener("keydown", (e) => {
 		save_block_coordinates()
 	}
 })
+
+function group_selected() {
+	let group_elem = document.createElement('div');
+	group_elem.style.position = 'absolute';
+
+	//TODO: Grouping works but have to consider also already grouped blocks will have position relative to the group
+	let selected_elems = selected().map((id) => document.getElementById("block-" + id));
+	selected.set([])
+
+	let lefts = selected_elems.map((elem) => parseFloat(elem.style.left));
+	let tops = selected_elems.map((elem) => parseFloat(elem.style.top));
+
+	let lowest_x = Math.min(...lefts);
+	let lowest_y = Math.min(...tops);
+
+	let end_xs = selected_elems.map((elem) => parseFloat(elem.style.left) + parseFloat(elem.style.width));
+	let end_ys = selected_elems.map((elem) => parseFloat(elem.style.top) + parseFloat(elem.style.height));
+
+	let highest_x = Math.max(...end_xs);
+	let highest_y = Math.max(...end_ys);
+
+	group_elem.style.left = lowest_x + "px";
+	group_elem.style.top = lowest_y + "px";
+	group_elem.style.width = highest_x - lowest_x + "px";
+	group_elem.style.height = highest_y - lowest_y + "px";
+	group_elem.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+
+	selected_elems.forEach((elem) => {
+		elem.style.left = parseFloat(elem.style.left) - lowest_x + "px";
+		elem.style.top = parseFloat(elem.style.top) - lowest_y + "px";
+		group_elem.appendChild(elem);
+	});
+
+	small_box?.appendChild(group_elem);
+	drag(group_elem, { set_left: (left) => { group_elem.style.left = left + "px"; }, set_top: (top) => { group_elem.style.top = top + "px"; } });
+}
 
 render(Channel, document.querySelector(".small-box"))
