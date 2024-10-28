@@ -2,18 +2,69 @@ import { auth } from "./auth.js";
 
 let host = "http://localhost:3000/api/";
 
-type Channel = {
+export type Block = {
   id: number;
-  slug: string;
-  title: string;
-  contents: [Block | Channel];
-}
+  title: string | null;
+  updated_at: Date;
+  created_at: Date;
+  state: 'Available' | 'Failure' | 'Procesed' | 'Processing';
+  comment_count: number;
+  generated_title: string;
+  class: 'Image' | 'Text' | 'Link' | 'Media' | 'Attachment';
+  base_class: 'Block';
+  content: string | null;
+  content_html: string | null;
+  description: string | null;
+  description_html: string | null;
+  source: null | {
+    title?: string;
+    url: string;
+    provider: {
+      name: string;
+      url: string;
+    } | null;
+  };
+  image: null | {
+    content_type: string;
+    display: { url: string };
+    filename: string;
+    large: { url: string };
+    original: {
+      file_size: number;
+      file_size_display: string;
+      url: string;
+    };
+    square: { url: string };
+    thumb: { url: string };
+    updated_at: Date;
+  };
+  // user: User;
+  connections?: Channel[];
+};
 
-type Block = {
+export type Channel = {
   id: number;
-  content: string;
   title: string;
-}
+  created_at: Date;
+  updated_at: Date;
+  published: boolean;
+  open: boolean;
+  collaboration: boolean;
+  slug: string;
+  length: number;
+  kind: string;
+  status: string;
+  user_id: number;
+  class: string;
+  base_class: string;
+  // user: User;
+  total_pages: number;
+  current_page: number;
+  per: number;
+  follower_count: number;
+  contents: (Block | Channel)[];
+  // collaborators: User[];
+};
 
 // API functions
 export const get_channel = async (slug: string): Promise<Channel> => {

@@ -1,12 +1,13 @@
-import { get_channel } from "./arena";
+import { get_channel } from "./arena.ts";
 import { createPanZoom } from "./panzoom/panzoom.js"
 import { render, mut, mem, sig, html, mounted, eff_on } from "./solid_monke/solid_monke.js"
 import { drag } from "./drag.js";
+import { CanvasStore } from "./canvas_store.ts";
 
 let channel_slug = "reading-week-fall-2024"
 
 let selected = sig([])
-let channel = mut({ contents: [] })
+let channel: CanvasStore = mut(new CanvasStore())
 let size = 500
 
 let small_box = document.querySelector(".small-box")
@@ -127,14 +128,25 @@ get_channel(channel_slug).then((c) => {
 	let blocks_cache = localStorage.getItem(channel_slug)
 	if (blocks_cache) {
 		let blocks: BlockCache = JSON.parse(blocks_cache)
-		Object.entries(blocks).forEach(([id, pos]) => {
-			let block = c.contents.find((b) => b.id == parseInt(id))
-			block.x = pos.x
-			block.y = pos.y
-		})
-	}
 
-	channel.contents = c.contents
+		c.contents.forEach((block) => {
+			let pos
+			if (blocks[block.id]) {
+				console.log("found block", blocks[block.id])
+				let x = blocks[block.id].x
+				let y = blocks[block.id].y
+				pos = { x, y }
+			}
+
+			if (block.class == "Channel") {
+				channel.add_channel_as_node(block, pos)
+			} else if (block.base_class == "Block") {
+				console.log("adding block pos", pos)
+				channel.add_block_as_node(block)
+			}
+		})
+
+	}
 
 })
 
@@ -149,14 +161,26 @@ function intersecting(a, b) {
 
 let intersecting_blocks = (x, y, w, h) => {
 	channel.contents.forEach((block) => {
-		let elem = document.getElementById("block-" + block.id)
-		if (!elem) return
+		if (block.class == "Group") return
+
+		let id = block.id
+		let in_group = channel.check_if_node_in_group(id)
+
+		let global_pos = channel.get_global_position(id)
+		let dimension = channel.get_dimensions(id)
+
+		if (in_group) {
+			console.log("in group")
+			return
+		}
+
+		if (!global_pos || !dimension) return
 
 		let rect = {
-			left: parseFloat(elem.style.left),
-			top: parseFloat(elem.style.top),
-			right: parseFloat(elem.style.left) + size,
-			bottom: parseFloat(elem.style.top) + size
+			left: global_pos.x,
+			top: global_pos.y,
+			right: global_pos.x + dimension.width,
+			bottom: global_pos.y + dimension.height
 		}
 
 		let other = {
@@ -167,46 +191,88 @@ let intersecting_blocks = (x, y, w, h) => {
 		}
 
 		if (intersecting(rect, other)) selected.set([...selected(), block.id])
-
 	})
-	group_selected()
+
+	console.log("intersecting blocks", selected())
 }
 
-let css = {}
+const Group = (group) => {
+	console.log("group", group)
+	let x = mem(() => group.x)
+	let y = mem(() => group.y)
+	let width = mem(() => group.width)
+	let height = mem(() => group.height)
 
-const Block = (block, i) => {
-	let x = sig(i() % 10 * size + 10)
-	let y = sig(Math.floor(i() / 10) * size)
+	let children_nodes = mem(() => group.children.map((id) => channel.get_node(id)))
 
-	if (block.x) x.set(parseFloat(block.x))
-	if (block.y) y.set(parseFloat(block.y))
+	let onmount = () => {
+		let elem = document.getElementById("group-" + group.id)
+		console.log("group elem", elem)
+		drag(elem, { set_left: (x) => { group.x = x }, set_top: (y) => { group.y = y } })
+	}
 
+	mounted(onmount)
+
+	let style = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:rgba(0, 0, 0, 0.1)`)
+
+	return html`
+	.block.group [style=${style} id=${"group-" + group.id}] 
+		each of ${children_nodes} as ${b => Block(b, true)}`
+
+}
+
+const Block = (block, grouped = false) => {
+	if (channel.check_if_node_in_group(block.id) && !grouped) {
+		console.log("block exists in group", block.id)
+		return null
+	}
+
+	if (block.base_class == "Group") return Group(block)
+	let node = channel.get_node(block.id)
+	if (!node) return
+
+	let x = mem(() => node.x)
+	let y = mem(() => node.y)
+	let width = mem(() => node.width)
+	let height = mem(() => node.height)
+
+	let set_x = (x) => {
+		let node = channel.get_node(block.id)
+		if (node) { node.x = x }
+	}
+
+	let set_y = (y) => {
+		let node = channel.get_node(block.id)
+		if (node) { node.y = y }
+	}
 
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
-		drag(elem, { set_left: x.set, set_top: y.set })
+		drag(elem, { set_left: set_x, set_top: set_y })
 	}
 
 	let block_selected = mem(() => selected().includes(block.id))
-	let style = mem(() => `left:${x()}px; top:${y()}px; width:${size}px; height:${size}px;background-color:${block_selected() ? "red" : "white"}`)
+	let style = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:${block_selected() ? "red" : "white"}`)
 
 	if (block.class == "Text") return TextBlock(block, style, onmount)
 	if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style, onmount)
 }
 
 const ImageBlock = (block, style: Function, onmount: () => void) => {
-	let image = block.image
-	css[block.id] = style
+	let image = block.source.image
+
 	mounted(onmount)
-	let s = "width:" + size + "px;"
+
+	let s = "width:100%"
+
 	return html`
-.block.image [style=${style} id=${"block-" + block.id}] 
-	img [src=${image.display.url} style=${s}]`
+	.block.image [style=${style} id=${"block-" + block.id}] 
+		img [src=${image.display.url} style=${s}]`
 }
 
 const TextBlock = (block, style, onmount) => {
-	let content = block.content
-	css[block.id] = style
+	let content = block.source.content
+
 	mounted(onmount)
 	return html`.block.text [style=${style} id=${"block-" + block.id}] -- ${content}`
 }
@@ -228,7 +294,9 @@ function save_block_coordinates() {
 
 
 document.addEventListener("keydown", (e) => {
-	if (e.key === "h") {
+	if (e.key === "g") {
+		group_selected()
+
 	}
 
 	if (e.key === "z") {
@@ -298,40 +366,51 @@ document.addEventListener("keydown", (e) => {
 	}
 })
 
+function uid() {
+	return Date.now() + Math.floor(Math.random() * 1000)
+}
+
 function group_selected() {
 	let group_elem = document.createElement('div');
 	group_elem.style.position = 'absolute';
 
 	//TODO: Grouping works but have to consider also already grouped blocks will have position relative to the group
-	let selected_elems = selected().map((id) => document.getElementById("block-" + id));
+	let selected_elems = [...selected()];
+	console.log("selected elems", selected_elems)
 	selected.set([])
 
-	let lefts = selected_elems.map((elem) => parseFloat(elem.style.left));
-	let tops = selected_elems.map((elem) => parseFloat(elem.style.top));
+	let lefts = selected_elems.map((id) => channel.get_global_position(id).x);
+	let tops = selected_elems.map((id) => channel.get_global_position(id).y);
 
 	let lowest_x = Math.min(...lefts);
 	let lowest_y = Math.min(...tops);
 
-	let end_xs = selected_elems.map((elem) => parseFloat(elem.style.left) + parseFloat(elem.style.width));
-	let end_ys = selected_elems.map((elem) => parseFloat(elem.style.top) + parseFloat(elem.style.height));
+	let end_xs = selected_elems.map((id) => {
+		let node = channel.get_box(id);
+		return node?.right
+	});
+
+	let end_ys = selected_elems.map((id) => {
+		let node = channel.get_box(id);
+		return node?.bottom
+	});
 
 	let highest_x = Math.max(...end_xs);
 	let highest_y = Math.max(...end_ys);
 
-	group_elem.style.left = lowest_x + "px";
-	group_elem.style.top = lowest_y + "px";
-	group_elem.style.width = highest_x - lowest_x + "px";
-	group_elem.style.height = highest_y - lowest_y + "px";
-	group_elem.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+	channel.add_group_as_node(
+		uid(),
+		selected_elems,
+		{ x: lowest_x, y: lowest_y },
+		{ width: highest_x - lowest_x, height: highest_y - lowest_y },
+	)
 
-	selected_elems.forEach((elem) => {
-		elem.style.left = parseFloat(elem.style.left) - lowest_x + "px";
-		elem.style.top = parseFloat(elem.style.top) - lowest_y + "px";
-		group_elem.appendChild(elem);
+	selected_elems.forEach((id) => {
+		let node = channel.get_node(id);
+		if (!node) return
+		node.x = node.x - lowest_x;
+		node.y = node.y - lowest_y;
 	});
-
-	small_box?.appendChild(group_elem);
-	drag(group_elem, { set_left: (left) => { group_elem.style.left = left + "px"; }, set_top: (top) => { group_elem.style.top = top + "px"; } });
 }
 
 render(Channel, document.querySelector(".small-box"))

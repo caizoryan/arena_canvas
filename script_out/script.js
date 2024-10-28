@@ -560,17 +560,17 @@ function createPanZoom(domElement, options) {
   }
   function showRectangle(rect) {
     var clientRect = owner.getBoundingClientRect();
-    var size2 = transformToScreen(clientRect.width, clientRect.height);
+    var size = transformToScreen(clientRect.width, clientRect.height);
     var rectWidth = rect.right - rect.left;
     var rectHeight = rect.bottom - rect.top;
     if (!Number.isFinite(rectWidth) || !Number.isFinite(rectHeight)) {
       throw new Error("Invalid rectangle");
     }
-    var dw = size2.x / rectWidth;
-    var dh = size2.y / rectHeight;
+    var dw = size.x / rectWidth;
+    var dh = size.y / rectHeight;
     var scale = Math.min(dw, dh);
-    transform.x = -(rect.left + rectWidth / 2) * scale + size2.x / 2;
-    transform.y = -(rect.top + rectHeight / 2) * scale + size2.y / 2;
+    transform.x = -(rect.left + rectWidth / 2) * scale + size.x / 2;
+    transform.y = -(rect.top + rectHeight / 2) * scale + size.y / 2;
     transform.scale = scale;
   }
   function transformToScreen(x, y) {
@@ -736,9 +736,9 @@ function createPanZoom(domElement, options) {
       if (transform.scale === maxZoom) return;
       ratio = maxZoom / transform.scale;
     }
-    var size2 = transformToScreen(clientX, clientY);
-    transform.x = size2.x - ratio * (size2.x - transform.x);
-    transform.y = size2.y - ratio * (size2.y - transform.y);
+    var size = transformToScreen(clientX, clientY);
+    transform.x = size.x - ratio * (size.x - transform.x);
+    transform.y = size.y - ratio * (size.y - transform.y);
     if (bounds && boundsPadding === 1 && minZoom === 1) {
       transform.scale *= ratio;
       keepTransformInsideBounds();
@@ -3072,11 +3072,144 @@ var drag = (elem, options = {}) => {
   return { do_move };
 };
 
+// scripts/canvas_store.ts
+var CanvasStore = class {
+  contents;
+  max_x = 2500;
+  default_width = 300;
+  default_height = 300;
+  constructor() {
+    this.contents = [];
+  }
+  check_if_node_exists(id) {
+    return this.contents.every((node) => node.id !== id);
+  }
+  get_position_after_previous() {
+    const last_node = this.contents[this.contents.length - 1];
+    if (last_node === void 0) {
+      return { x: 0, y: 0 };
+    }
+    const x = last_node.x + last_node.width + 10;
+    const y = last_node.y;
+    if (x > this.max_x) {
+      return { x: 0, y: y + last_node.height + 10 };
+    } else {
+      return { x, y };
+    }
+  }
+  add_block_as_node(block, position) {
+    if (this.check_if_node_exists(block.id)) {
+      const pos = position ? position : this.get_position_after_previous();
+      const node = {
+        id: block.id,
+        class: block.class,
+        base_class: "Block",
+        x: pos.x,
+        y: pos.y,
+        width: this.default_width,
+        height: this.default_height,
+        children: [],
+        source: block
+      };
+      this.contents.push(node);
+      return node;
+    }
+  }
+  add_channel_as_node(channel2, position) {
+    if (this.check_if_node_exists(channel2.id)) {
+      const pos = position ? position : this.get_position_after_previous();
+      const node = {
+        id: channel2.id,
+        class: "Channel",
+        base_class: "Channel",
+        x: pos.x,
+        y: pos.y,
+        width: this.default_width,
+        height: this.default_height,
+        children: [],
+        source: channel2
+      };
+      this.contents.push(node);
+      return node;
+    }
+  }
+  add_group_as_node(id, children2, position, dimension) {
+    if (this.check_if_node_exists(id)) {
+      console.log(children2);
+      const node = {
+        id,
+        class: "Group",
+        base_class: "Group",
+        x: position.x,
+        y: position.y,
+        width: dimension.width,
+        height: dimension.height,
+        children: children2
+      };
+      this.contents.push(node);
+      return node;
+    }
+  }
+  get_node(id) {
+    return this.contents.find((node) => node.id === id);
+  }
+  get_children(id) {
+    return this.contents.filter((node) => node.children.includes(id));
+  }
+  get_position(id) {
+    const node = this.get_node(id);
+    if (node) {
+      return { x: node.x, y: node.y };
+    }
+  }
+  check_if_node_in_group(node_id) {
+    let returning_group;
+    this.contents.forEach((node) => {
+      if (node.class === "Group") {
+        const group = node;
+        if (group.children.includes(node_id)) {
+          returning_group = group;
+        }
+      }
+    });
+    return returning_group;
+  }
+  get_global_position(id) {
+    const node = this.get_node(id);
+    if (node) {
+      const group = this.check_if_node_in_group(id);
+      if (group) {
+        console.log("is in a group", group);
+        return { x: node.x + group.x, y: node.y + group.y };
+      } else {
+        return { x: node.x, y: node.y };
+      }
+    }
+  }
+  get_dimensions(id) {
+    const node = this.get_node(id);
+    if (node) {
+      return { width: node.width, height: node.height };
+    }
+  }
+  get_box(id) {
+    const position = this.get_global_position(id);
+    const dimensions = this.get_dimensions(id);
+    if (position && dimensions) {
+      return {
+        top: position.y,
+        left: position.x,
+        right: position.x + dimensions.width,
+        bottom: position.y + dimensions.height
+      };
+    }
+  }
+};
+
 // scripts/script.ts
 var channel_slug = "reading-week-fall-2024";
 var selected = sig([]);
-var channel = mut({ contents: [] });
-var size = 500;
+var channel = mut(new CanvasStore());
 var small_box = document.querySelector(".small-box");
 var recter = document.querySelector(".small-box-recter");
 var panzoom = createPanZoom(small_box, {});
@@ -3170,13 +3303,22 @@ get_channel(channel_slug).then((c) => {
   let blocks_cache = localStorage.getItem(channel_slug);
   if (blocks_cache) {
     let blocks = JSON.parse(blocks_cache);
-    Object.entries(blocks).forEach(([id, pos]) => {
-      let block = c.contents.find((b) => b.id == parseInt(id));
-      block.x = pos.x;
-      block.y = pos.y;
+    c.contents.forEach((block) => {
+      let pos;
+      if (blocks[block.id]) {
+        console.log("found block", blocks[block.id]);
+        let x = blocks[block.id].x;
+        let y = blocks[block.id].y;
+        pos = { x, y };
+      }
+      if (block.class == "Channel") {
+        channel.add_channel_as_node(block, pos);
+      } else if (block.base_class == "Block") {
+        console.log("adding block pos", pos);
+        channel.add_block_as_node(block);
+      }
     });
   }
-  channel.contents = c.contents;
 });
 var panning = sig(true);
 function intersecting(a, b) {
@@ -3184,13 +3326,21 @@ function intersecting(a, b) {
 }
 var intersecting_blocks = (x, y, w, h3) => {
   channel.contents.forEach((block) => {
-    let elem = document.getElementById("block-" + block.id);
-    if (!elem) return;
+    if (block.class == "Group") return;
+    let id = block.id;
+    let in_group = channel.check_if_node_in_group(id);
+    let global_pos = channel.get_global_position(id);
+    let dimension = channel.get_dimensions(id);
+    if (in_group) {
+      console.log("in group");
+      return;
+    }
+    if (!global_pos || !dimension) return;
     let rect = {
-      left: parseFloat(elem.style.left),
-      top: parseFloat(elem.style.top),
-      right: parseFloat(elem.style.left) + size,
-      bottom: parseFloat(elem.style.top) + size
+      left: global_pos.x,
+      top: global_pos.y,
+      right: global_pos.x + dimension.width,
+      bottom: global_pos.y + dimension.height
     };
     let other = {
       left: x,
@@ -3200,35 +3350,73 @@ var intersecting_blocks = (x, y, w, h3) => {
     };
     if (intersecting(rect, other)) selected.set([...selected(), block.id]);
   });
-  group_selected();
+  console.log("intersecting blocks", selected());
 };
-var css = {};
-var Block = (block, i) => {
-  let x = sig(i() % 10 * size + 10);
-  let y = sig(Math.floor(i() / 10) * size);
-  if (block.x) x.set(parseFloat(block.x));
-  if (block.y) y.set(parseFloat(block.y));
+var Group = (group) => {
+  console.log("group", group);
+  let x = mem(() => group.x);
+  let y = mem(() => group.y);
+  let width = mem(() => group.width);
+  let height = mem(() => group.height);
+  let children_nodes = mem(() => group.children.map((id) => channel.get_node(id)));
+  let onmount = () => {
+    let elem = document.getElementById("group-" + group.id);
+    console.log("group elem", elem);
+    drag(elem, { set_left: (x2) => {
+      group.x = x2;
+    }, set_top: (y2) => {
+      group.y = y2;
+    } });
+  };
+  mounted(onmount);
+  let style2 = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:rgba(0, 0, 0, 0.1)`);
+  return h2`
+	.block.group [style=${style2} id=${"group-" + group.id}] 
+		each of ${children_nodes} as ${(b) => Block(b, true)}`;
+};
+var Block = (block, grouped = false) => {
+  if (channel.check_if_node_in_group(block.id) && !grouped) {
+    console.log("block exists in group", block.id);
+    return null;
+  }
+  if (block.base_class == "Group") return Group(block);
+  let node = channel.get_node(block.id);
+  if (!node) return;
+  let x = mem(() => node.x);
+  let y = mem(() => node.y);
+  let width = mem(() => node.width);
+  let height = mem(() => node.height);
+  let set_x = (x2) => {
+    let node2 = channel.get_node(block.id);
+    if (node2) {
+      node2.x = x2;
+    }
+  };
+  let set_y = (y2) => {
+    let node2 = channel.get_node(block.id);
+    if (node2) {
+      node2.y = y2;
+    }
+  };
   let onmount = () => {
     let elem = document.getElementById("block-" + block.id);
-    drag(elem, { set_left: x.set, set_top: y.set });
+    drag(elem, { set_left: set_x, set_top: set_y });
   };
   let block_selected = mem(() => selected().includes(block.id));
-  let style2 = mem(() => `left:${x()}px; top:${y()}px; width:${size}px; height:${size}px;background-color:${block_selected() ? "red" : "white"}`);
+  let style2 = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:${block_selected() ? "red" : "white"}`);
   if (block.class == "Text") return TextBlock(block, style2, onmount);
   if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style2, onmount);
 };
 var ImageBlock = (block, style2, onmount) => {
-  let image = block.image;
-  css[block.id] = style2;
+  let image = block.source.image;
   mounted(onmount);
-  let s = "width:" + size + "px;";
+  let s = "width:100%";
   return h2`
-.block.image [style=${style2} id=${"block-" + block.id}] 
-	img [src=${image.display.url} style=${s}]`;
+	.block.image [style=${style2} id=${"block-" + block.id}] 
+		img [src=${image.display.url} style=${s}]`;
 };
 var TextBlock = (block, style2, onmount) => {
-  let content = block.content;
-  css[block.id] = style2;
+  let content = block.source.content;
   mounted(onmount);
   return h2`.block.text [style=${style2} id=${"block-" + block.id}] -- ${content}`;
 };
@@ -3244,7 +3432,8 @@ function save_block_coordinates() {
   localStorage.setItem(channel_slug, JSON.stringify(blocks));
 }
 document.addEventListener("keydown", (e) => {
-  if (e.key === "h") {
+  if (e.key === "g") {
+    group_selected();
   }
   if (e.key === "z") {
     if (recter.style.display == "block") {
@@ -3299,34 +3488,40 @@ document.addEventListener("keydown", (e) => {
     save_block_coordinates();
   }
 });
+function uid() {
+  return Date.now() + Math.floor(Math.random() * 1e3);
+}
 function group_selected() {
   let group_elem = document.createElement("div");
   group_elem.style.position = "absolute";
-  let selected_elems = selected().map((id) => document.getElementById("block-" + id));
+  let selected_elems = [...selected()];
+  console.log("selected elems", selected_elems);
   selected.set([]);
-  let lefts = selected_elems.map((elem) => parseFloat(elem.style.left));
-  let tops = selected_elems.map((elem) => parseFloat(elem.style.top));
+  let lefts = selected_elems.map((id) => channel.get_global_position(id).x);
+  let tops = selected_elems.map((id) => channel.get_global_position(id).y);
   let lowest_x = Math.min(...lefts);
   let lowest_y = Math.min(...tops);
-  let end_xs = selected_elems.map((elem) => parseFloat(elem.style.left) + parseFloat(elem.style.width));
-  let end_ys = selected_elems.map((elem) => parseFloat(elem.style.top) + parseFloat(elem.style.height));
+  let end_xs = selected_elems.map((id) => {
+    let node = channel.get_box(id);
+    return node?.right;
+  });
+  let end_ys = selected_elems.map((id) => {
+    let node = channel.get_box(id);
+    return node?.bottom;
+  });
   let highest_x = Math.max(...end_xs);
   let highest_y = Math.max(...end_ys);
-  group_elem.style.left = lowest_x + "px";
-  group_elem.style.top = lowest_y + "px";
-  group_elem.style.width = highest_x - lowest_x + "px";
-  group_elem.style.height = highest_y - lowest_y + "px";
-  group_elem.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
-  selected_elems.forEach((elem) => {
-    elem.style.left = parseFloat(elem.style.left) - lowest_x + "px";
-    elem.style.top = parseFloat(elem.style.top) - lowest_y + "px";
-    group_elem.appendChild(elem);
+  channel.add_group_as_node(
+    uid(),
+    selected_elems,
+    { x: lowest_x, y: lowest_y },
+    { width: highest_x - lowest_x, height: highest_y - lowest_y }
+  );
+  selected_elems.forEach((id) => {
+    let node = channel.get_node(id);
+    if (!node) return;
+    node.x = node.x - lowest_x;
+    node.y = node.y - lowest_y;
   });
-  small_box?.appendChild(group_elem);
-  drag(group_elem, { set_left: (left) => {
-    group_elem.style.left = left + "px";
-  }, set_top: (top) => {
-    group_elem.style.top = top + "px";
-  } });
 }
 render(Channel, document.querySelector(".small-box"));
