@@ -3331,11 +3331,7 @@ var intersecting_blocks = (x, y, w, h3) => {
     let in_group = channel.check_if_node_in_group(id);
     let global_pos = channel.get_global_position(id);
     let dimension = channel.get_dimensions(id);
-    if (in_group) {
-      console.log("in group");
-      return;
-    }
-    if (!global_pos || !dimension) return;
+    if (!global_pos || !dimension || in_group) return;
     let rect = {
       left: global_pos.x,
       top: global_pos.y,
@@ -3353,7 +3349,6 @@ var intersecting_blocks = (x, y, w, h3) => {
   console.log("intersecting blocks", selected());
 };
 var Group = (group) => {
-  console.log("group", group);
   let x = mem(() => group.x);
   let y = mem(() => group.y);
   let width = mem(() => group.width);
@@ -3361,7 +3356,6 @@ var Group = (group) => {
   let children_nodes = mem(() => group.children.map((id) => channel.get_node(id)));
   let onmount = () => {
     let elem = document.getElementById("group-" + group.id);
-    console.log("group elem", elem);
     drag(elem, { set_left: (x2) => {
       group.x = x2;
     }, set_top: (y2) => {
@@ -3376,7 +3370,6 @@ var Group = (group) => {
 };
 var Block = (block, grouped = false) => {
   if (channel.check_if_node_in_group(block.id) && !grouped) {
-    console.log("block exists in group", block.id);
     return null;
   }
   if (block.base_class == "Group") return Group(block);
@@ -3386,18 +3379,8 @@ var Block = (block, grouped = false) => {
   let y = mem(() => node.y);
   let width = mem(() => node.width);
   let height = mem(() => node.height);
-  let set_x = (x2) => {
-    let node2 = channel.get_node(block.id);
-    if (node2) {
-      node2.x = x2;
-    }
-  };
-  let set_y = (y2) => {
-    let node2 = channel.get_node(block.id);
-    if (node2) {
-      node2.y = y2;
-    }
-  };
+  let set_x = (x2) => node.x = x2;
+  let set_y = (y2) => node.y = y2;
   let onmount = () => {
     let elem = document.getElementById("block-" + block.id);
     drag(elem, { set_left: set_x, set_top: set_y });
@@ -3495,20 +3478,19 @@ function group_selected() {
   let group_elem = document.createElement("div");
   group_elem.style.position = "absolute";
   let selected_elems = [...selected()];
-  console.log("selected elems", selected_elems);
   selected.set([]);
-  let lefts = selected_elems.map((id) => channel.get_global_position(id).x);
-  let tops = selected_elems.map((id) => channel.get_global_position(id).y);
+  let lefts = selected_elems.map((id) => channel.get_global_position(id)?.x).filter((x) => x !== void 0);
+  let tops = selected_elems.map((id) => channel.get_global_position(id)?.y).filter((y) => y !== void 0);
   let lowest_x = Math.min(...lefts);
   let lowest_y = Math.min(...tops);
   let end_xs = selected_elems.map((id) => {
     let node = channel.get_box(id);
     return node?.right;
-  });
+  }).filter((x) => x !== void 0);
   let end_ys = selected_elems.map((id) => {
     let node = channel.get_box(id);
     return node?.bottom;
-  });
+  }).filter((y) => y !== void 0);
   let highest_x = Math.max(...end_xs);
   let highest_y = Math.max(...end_ys);
   channel.add_group_as_node(

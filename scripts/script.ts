@@ -169,12 +169,7 @@ let intersecting_blocks = (x, y, w, h) => {
 		let global_pos = channel.get_global_position(id)
 		let dimension = channel.get_dimensions(id)
 
-		if (in_group) {
-			console.log("in group")
-			return
-		}
-
-		if (!global_pos || !dimension) return
+		if (!global_pos || !dimension || in_group) return
 
 		let rect = {
 			left: global_pos.x,
@@ -197,7 +192,6 @@ let intersecting_blocks = (x, y, w, h) => {
 }
 
 const Group = (group) => {
-	console.log("group", group)
 	let x = mem(() => group.x)
 	let y = mem(() => group.y)
 	let width = mem(() => group.width)
@@ -207,7 +201,6 @@ const Group = (group) => {
 
 	let onmount = () => {
 		let elem = document.getElementById("group-" + group.id)
-		console.log("group elem", elem)
 		drag(elem, { set_left: (x) => { group.x = x }, set_top: (y) => { group.y = y } })
 	}
 
@@ -222,12 +215,9 @@ const Group = (group) => {
 }
 
 const Block = (block, grouped = false) => {
-	if (channel.check_if_node_in_group(block.id) && !grouped) {
-		console.log("block exists in group", block.id)
-		return null
-	}
-
+	if (channel.check_if_node_in_group(block.id) && !grouped) { return null }
 	if (block.base_class == "Group") return Group(block)
+
 	let node = channel.get_node(block.id)
 	if (!node) return
 
@@ -236,15 +226,8 @@ const Block = (block, grouped = false) => {
 	let width = mem(() => node.width)
 	let height = mem(() => node.height)
 
-	let set_x = (x) => {
-		let node = channel.get_node(block.id)
-		if (node) { node.x = x }
-	}
-
-	let set_y = (y) => {
-		let node = channel.get_node(block.id)
-		if (node) { node.y = y }
-	}
+	let set_x = (x: number) => node.x = x
+	let set_y = (y: number) => node.y = y
 
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
@@ -262,7 +245,6 @@ const ImageBlock = (block, style: Function, onmount: () => void) => {
 	let image = block.source.image
 
 	mounted(onmount)
-
 	let s = "width:100%"
 
 	return html`
@@ -374,13 +356,11 @@ function group_selected() {
 	let group_elem = document.createElement('div');
 	group_elem.style.position = 'absolute';
 
-	//TODO: Grouping works but have to consider also already grouped blocks will have position relative to the group
 	let selected_elems = [...selected()];
-	console.log("selected elems", selected_elems)
 	selected.set([])
 
-	let lefts = selected_elems.map((id) => channel.get_global_position(id).x);
-	let tops = selected_elems.map((id) => channel.get_global_position(id).y);
+	let lefts = selected_elems.map((id) => channel.get_global_position(id)?.x).filter((x) => x !== undefined);
+	let tops = selected_elems.map((id) => channel.get_global_position(id)?.y).filter((y) => y !== undefined);
 
 	let lowest_x = Math.min(...lefts);
 	let lowest_y = Math.min(...tops);
@@ -388,12 +368,12 @@ function group_selected() {
 	let end_xs = selected_elems.map((id) => {
 		let node = channel.get_box(id);
 		return node?.right
-	});
+	}).filter((x) => x !== undefined);
 
 	let end_ys = selected_elems.map((id) => {
 		let node = channel.get_box(id);
 		return node?.bottom
-	});
+	}).filter((y) => y !== undefined);
 
 	let highest_x = Math.max(...end_xs);
 	let highest_y = Math.max(...end_ys);
