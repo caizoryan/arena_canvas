@@ -3,12 +3,12 @@ import { createPanZoom } from "./panzoom/panzoom.js"
 import { render, mut, mem, sig, html, mounted, eff_on } from "./solid_monke/solid_monke.js"
 import { drag } from "./drag.js";
 import { CanvasStore } from "./canvas_store.ts";
+import { MD } from "./md.js";
 
 let channel_slug = "reading-week-fall-2024"
 
 let selected = sig([])
-let channel: CanvasStore = mut(new CanvasStore())
-let size = 500
+let store: CanvasStore = mut(new CanvasStore())
 
 let small_box = document.querySelector(".small-box")
 let recter = document.querySelector(".small-box-recter") as HTMLElement
@@ -132,17 +132,16 @@ get_channel(channel_slug).then((c) => {
 		c.contents.forEach((block) => {
 			let pos
 			if (blocks[block.id]) {
-				console.log("found block", blocks[block.id])
 				let x = blocks[block.id].x
 				let y = blocks[block.id].y
-				pos = { x, y }
+				pos = { x: parseInt(x), y: parseInt(y) }
 			}
 
 			if (block.class == "Channel") {
-				channel.add_channel_as_node(block, pos)
+				store.add_channel_as_node(block, pos)
 			} else if (block.base_class == "Block") {
 				console.log("adding block pos", pos)
-				channel.add_block_as_node(block)
+				store.add_block_as_node(block, pos)
 			}
 		})
 
@@ -160,14 +159,14 @@ function intersecting(a, b) {
 }
 
 let intersecting_blocks = (x, y, w, h) => {
-	channel.contents.forEach((block) => {
+	store.contents.forEach((block) => {
 		if (block.class == "Group") return
 
 		let id = block.id
-		let in_group = channel.check_if_node_in_group(id)
+		let in_group = store.check_if_node_in_group(id)
 
-		let global_pos = channel.get_global_position(id)
-		let dimension = channel.get_dimensions(id)
+		let global_pos = store.get_global_position(id)
+		let dimension = store.get_dimensions(id)
 
 		if (!global_pos || !dimension || in_group) return
 
@@ -187,8 +186,6 @@ let intersecting_blocks = (x, y, w, h) => {
 
 		if (intersecting(rect, other)) selected.set([...selected(), block.id])
 	})
-
-	console.log("intersecting blocks", selected())
 }
 
 const Group = (group) => {
@@ -197,7 +194,7 @@ const Group = (group) => {
 	let width = mem(() => group.width)
 	let height = mem(() => group.height)
 
-	let children_nodes = mem(() => group.children.map((id) => channel.get_node(id)))
+	let children_nodes = mem(() => group.children.map((id) => store.get_node(id)))
 
 	let onmount = () => {
 		let elem = document.getElementById("group-" + group.id)
@@ -211,14 +208,12 @@ const Group = (group) => {
 	return html`
 	.block.group [style=${style} id=${"group-" + group.id}] 
 		each of ${children_nodes} as ${b => Block(b, true)}`
-
 }
-
 const Block = (block, grouped = false) => {
-	if (channel.check_if_node_in_group(block.id) && !grouped) { return null }
+	if (store.check_if_node_in_group(block.id) && !grouped) { return null }
 	if (block.base_class == "Group") return Group(block)
 
-	let node = channel.get_node(block.id)
+	let node = store.get_node(block.id)
 	if (!node) return
 
 	let x = mem(() => node.x)
@@ -231,7 +226,7 @@ const Block = (block, grouped = false) => {
 
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
-		drag(elem, { set_left: set_x, set_top: set_y })
+		drag(elem, { set_left: set_x, set_top: set_y, pan_switch: panning })
 	}
 
 	let block_selected = mem(() => selected().includes(block.id))
@@ -256,18 +251,24 @@ const TextBlock = (block, style, onmount) => {
 	let content = block.source.content
 
 	mounted(onmount)
-	return html`.block.text [style=${style} id=${"block-" + block.id}] -- ${content}`
+	return html`.block.text [style=${style} id=${"block-" + block.id}] -- ${MD(content)}`
 }
 
 const Channel = () => {
-	return html`each of ${mem(() => channel.contents)} as ${Block}`
+	return html`each of ${mem(() => store.contents)} as ${Block}`
 }
 
 function save_block_coordinates() {
 	let blocks = {}
-	document.querySelectorAll(".block").forEach((block) => {
-		let id = block.id.split("-")[1]
-		blocks[id] = { x: block.style.left, y: block.style.top }
+	let nodes = store.contents
+	nodes.forEach((node) => {
+		if (node.base_class == "Group") return
+
+		let id = node.id
+		let pos = store.get_global_position(id)
+		if (!pos) return
+
+		blocks[id] = { x: pos.x, y: pos.y, width: node.width, height: node.height }
 	})
 
 	localStorage.setItem(channel_slug, JSON.stringify(blocks))
@@ -278,7 +279,6 @@ function save_block_coordinates() {
 document.addEventListener("keydown", (e) => {
 	if (e.key === "g") {
 		group_selected()
-
 	}
 
 	if (e.key === "z") {
@@ -302,6 +302,10 @@ document.addEventListener("keydown", (e) => {
 	}
 
 	if (e.key === "v") {
+		panning.set(!panning())
+	}
+
+	if (e.key === "s") {
 		if (recter.style.display == "block") {
 			recter.style.display = "none"
 			panzoom.resume()
@@ -359,26 +363,26 @@ function group_selected() {
 	let selected_elems = [...selected()];
 	selected.set([])
 
-	let lefts = selected_elems.map((id) => channel.get_global_position(id)?.x).filter((x) => x !== undefined);
-	let tops = selected_elems.map((id) => channel.get_global_position(id)?.y).filter((y) => y !== undefined);
+	let lefts = selected_elems.map((id) => store.get_global_position(id)?.x).filter((x) => x !== undefined);
+	let tops = selected_elems.map((id) => store.get_global_position(id)?.y).filter((y) => y !== undefined);
 
 	let lowest_x = Math.min(...lefts);
 	let lowest_y = Math.min(...tops);
 
 	let end_xs = selected_elems.map((id) => {
-		let node = channel.get_box(id);
+		let node = store.get_box(id);
 		return node?.right
 	}).filter((x) => x !== undefined);
 
 	let end_ys = selected_elems.map((id) => {
-		let node = channel.get_box(id);
+		let node = store.get_box(id);
 		return node?.bottom
 	}).filter((y) => y !== undefined);
 
 	let highest_x = Math.max(...end_xs);
 	let highest_y = Math.max(...end_ys);
 
-	channel.add_group_as_node(
+	store.add_group_as_node(
 		uid(),
 		selected_elems,
 		{ x: lowest_x, y: lowest_y },
@@ -386,7 +390,7 @@ function group_selected() {
 	)
 
 	selected_elems.forEach((id) => {
-		let node = channel.get_node(id);
+		let node = store.get_node(id);
 		if (!node) return
 		node.x = node.x - lowest_x;
 		node.y = node.y - lowest_y;

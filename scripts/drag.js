@@ -58,18 +58,20 @@ export const drag = (elem, options = {}) => {
 
 
 
+
 	function handle_pointerdown(e) {
-		if (e.target !== e.currentTarget) return;
+		let target = check_target(e.target, e.currentTarget);
+		if (!target) return;
 		let pann = typeof pan_switch === 'function' ? pan_switch() : pan_switch;
 		if (!pann) return;
 		e.preventDefault();
 		e.stopPropagation();
 
-		e.target.style.cursor = 'none'
+		target.style.cursor = 'none'
 
 		// Set Last Element Position. Needed because event offset doesn't have decimals. And decimals will be needed when dragging
-		lastPosX = e.target.offsetLeft;
-		lastPosY = e.target.offsetTop;
+		lastPosX = target.offsetLeft;
+		lastPosY = target.offsetTop;
 
 		// Set Position Bounds
 		const matrix = new WebKitCSSMatrix(getComputedStyle(e.target).getPropertyValue("transform"));
@@ -78,32 +80,50 @@ export const drag = (elem, options = {}) => {
 
 		// Set Position Bounds
 		if (bound == 'inner') {
-			posX_min = e.target.offsetWidth / 2 * (scale - 1) - translateX;
-			posY_min = e.target.offsetHeight / 2 * (scale - 1) - translateY;
-			posX_max = e.target.parentNode.offsetWidth - e.target.offsetWidth - e.target.offsetWidth / 2 * (scale - 1) - translateX;
-			posY_max = e.target.parentNode.offsetHeight - e.target.offsetHeight - e.target.offsetHeight / 2 * (scale - 1) - translateY;
+			posX_min = target.offsetWidth / 2 * (scale - 1) - translateX;
+			posY_min = target.offsetHeight / 2 * (scale - 1) - translateY;
+			posX_max = target.parentNode.offsetWidth - target.offsetWidth - target.offsetWidth / 2 * (scale - 1) - translateX;
+			posY_max = target.parentNode.offsetHeight - target.offsetHeight - target.offsetHeight / 2 * (scale - 1) - translateY;
 		}
 		else if (bound == 'outer') {
-			posX_max = e.target.offsetWidth / 2 * (scale - 1) - translateX;
-			posY_max = e.target.offsetHeight / 2 * (scale - 1) - translateY;
-			posX_min = e.target.parentNode.offsetWidth - e.target.offsetWidth - e.target.offsetWidth / 2 * (scale - 1) - translateX;
-			posY_min = e.target.parentNode.offsetHeight - e.target.offsetHeight - e.target.offsetHeight / 2 * (scale - 1) - translateY;
+			posX_max = target.offsetWidth / 2 * (scale - 1) - translateX;
+			posY_max = target.offsetHeight / 2 * (scale - 1) - translateY;
+			posX_min = target.parentNode.offsetWidth - target.offsetWidth - target.offsetWidth / 2 * (scale - 1) - translateX;
+			posY_min = target.parentNode.offsetHeight - target.offsetHeight - target.offsetHeight / 2 * (scale - 1) - translateY;
 		}
 
-		const { x: px1, y: py1, width: pwidth1, height: pheight1 } = e.target.parentNode.getBoundingClientRect();
-		const pwidth2 = e.target.parentNode.offsetWidth;
+		const { x: px1, y: py1, width: pwidth1, height: pheight1 } = target.parentNode.getBoundingClientRect();
+		const pwidth2 = target.parentNode.offsetWidth;
 		parentScale = pwidth1 / pwidth2;
 
-		e.target.setPointerCapture(e.pointerId);	// https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API
+		target.setPointerCapture(e.pointerId);	// https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API
+	}
+
+	function check_target(elem, target) {
+		if (elem !== target) {
+			let buffer = target
+			// check parent till no parent
+			while (buffer !== document.body) {
+				if (buffer === target) {
+					console.log("foudn", buffer)
+					return buffer;
+				}
+				else buffer = buffer.parentNode
+			}
+			return false;
+		}
+		if (elem === target) return elem;
 	}
 
 	function handle_pointermove(e) {
-		if (e.target !== e.currentTarget) return;
-		if (!e.target.hasPointerCapture(e.pointerId)) return;
+		let target = check_target(e.target, e.currentTarget);
+		if (!target) return;
+		if (!target.hasPointerCapture(e.pointerId)) return;
 		let pann = typeof pan_switch === 'function' ? pan_switch() : pan_switch;
 		if (!pann) return;
 		e.preventDefault();
 		e.stopPropagation();
+		console.log(e.movementX, e.movementY);
 
 		const deltaX = e.movementX / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
 		const deltaY = e.movementY / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
@@ -112,10 +132,12 @@ export const drag = (elem, options = {}) => {
 	}
 
 	function handle_pointerup(e) {
+		let target = check_target(e.target, e.currentTarget);
+		if (!target) return;
 		e.preventDefault();
 		e.stopPropagation();
-		e.target.style.cursor = ''
-		e.target.releasePointerCapture(e.pointerId);
+		target.style.cursor = ''
+		target.releasePointerCapture(e.pointerId);
 	}
 
 
