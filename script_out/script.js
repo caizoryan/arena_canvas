@@ -5797,7 +5797,7 @@ var decodeHTML = function(str) {
 };
 
 // scripts/script.ts
-var channel_slug = "reading-week-fall-2024";
+var channel_slug = "project-labour-class";
 var selected = sig([]);
 var store = mut(new CanvasStore());
 var small_box = document.querySelector(".small-box");
@@ -5891,23 +5891,25 @@ var rectange_maker = (elem) => {
 rectange_maker(recter);
 get_channel(channel_slug).then((c6) => {
   let blocks_cache = localStorage.getItem(channel_slug);
+  console.log("", c6);
+  let blocks;
   if (blocks_cache) {
-    let blocks = JSON.parse(blocks_cache);
-    c6.contents.forEach((block) => {
-      let pos;
-      if (blocks[block.id]) {
-        let x3 = blocks[block.id].x;
-        let y2 = blocks[block.id].y;
-        pos = { x: parseInt(x3), y: parseInt(y2) };
-      }
-      if (block.class == "Channel") {
-        store.add_channel_as_node(block, pos);
-      } else if (block.base_class == "Block") {
-        console.log("adding block pos", pos);
-        store.add_block_as_node(block, pos);
-      }
-    });
+    blocks = JSON.parse(blocks_cache);
   }
+  c6.contents.forEach((block) => {
+    let pos;
+    if (blocks) {
+      let x3 = blocks[block.id].x;
+      let y2 = blocks[block.id].y;
+      pos = { x: parseInt(x3), y: parseInt(y2) };
+    }
+    if (block.class == "Channel") {
+      store.add_channel_as_node(block, pos);
+    } else if (block.base_class == "Block") {
+      console.log("adding block pos", pos);
+      store.add_block_as_node(block);
+    }
+  });
 });
 var panning = sig(true);
 function intersecting(a6, b2) {
@@ -5977,22 +5979,33 @@ var Block = (block, grouped = false) => {
   let style2 = mem(() => `left:${x3()}px; top:${y2()}px; width:${width()}px; height:${height()}px;background-color:${block_selected() ? "red" : "white"}`);
   if (block.class == "Text") return TextBlock(block, style2, onmount);
   if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style2, onmount);
+  if (block.class == "Attachment") return AttachmentBlock(block, style2, onmount);
+};
+var AttachmentBlock = (block, style2, onmount) => {
+  if (!block.source.attachment) return null;
+  console.log("attaches block", block.source.attachment);
+  console.log("attaches block url", block.source.attachment.url);
+  mounted(onmount);
+  let s4 = "width:100%";
+  return h2`
+		.block.attachment [style=${style2} id=${"block-" + block.id}]
+			video [style=${s4} src=${block.source.attachment.url} controls=true autoplay=true loop=true]`;
 };
 var ImageBlock = (block, style2, onmount) => {
   let image = block.source.image;
   mounted(onmount);
   let s4 = "width:100%";
   return h2`
-	.block.image [style=${style2} id=${"block-" + block.id}] 
-		img [src=${image.display.url} style=${s4}]`;
+		.block.image[style = ${style2} id = ${"block-" + block.id}]
+			img[src = ${image.display.url} style = ${s4}]`;
 };
 var TextBlock = (block, style2, onmount) => {
   let content = block.source.content;
   mounted(onmount);
-  return h2`.block.text [style=${style2} id=${"block-" + block.id}] -- ${MD(content)}`;
+  return h2`.block.text[style = ${style2} id = ${"block-" + block.id}]--${MD(content)} `;
 };
 var Channel = () => {
-  return h2`each of ${mem(() => store.contents)} as ${Block}`;
+  return h2`each of ${mem(() => store.contents)} as ${Block} `;
 };
 function save_block_coordinates() {
   let blocks = {};
@@ -6009,6 +6022,15 @@ function save_block_coordinates() {
 document.addEventListener("keydown", (e4) => {
   if (e4.key === "g") {
     group_selected();
+  }
+  if (e4.key === "d") {
+    let selected_elems = selected();
+    selected_elems.forEach((id) => {
+      let node = store.get_node(id);
+      if (!node) return;
+      let new_node = { ...node, id: uid() };
+      store.contents.push(new_node);
+    });
   }
   if (e4.key === "z") {
     if (recter.style.display == "block") {

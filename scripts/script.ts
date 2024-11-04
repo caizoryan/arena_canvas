@@ -5,7 +5,7 @@ import { drag } from "./drag.js";
 import { CanvasStore } from "./canvas_store.ts";
 import { MD } from "./md.js";
 
-let channel_slug = "reading-week-fall-2024"
+let channel_slug = "project-labour-class"
 
 let selected = sig([])
 let store: CanvasStore = mut(new CanvasStore())
@@ -126,26 +126,28 @@ type BlockCache = {
 
 get_channel(channel_slug).then((c) => {
 	let blocks_cache = localStorage.getItem(channel_slug)
+	console.log("", c)
+	let blocks: BlockCache
 	if (blocks_cache) {
-		let blocks: BlockCache = JSON.parse(blocks_cache)
-
-		c.contents.forEach((block) => {
-			let pos
-			if (blocks[block.id]) {
-				let x = blocks[block.id].x
-				let y = blocks[block.id].y
-				pos = { x: parseInt(x), y: parseInt(y) }
-			}
-
-			if (block.class == "Channel") {
-				store.add_channel_as_node(block, pos)
-			} else if (block.base_class == "Block") {
-				console.log("adding block pos", pos)
-				store.add_block_as_node(block, pos)
-			}
-		})
-
+		blocks = JSON.parse(blocks_cache)
 	}
+
+	c.contents.forEach((block) => {
+		let pos
+
+		if (blocks) {
+			let x = blocks[block.id].x
+			let y = blocks[block.id].y
+			pos = { x: parseInt(x), y: parseInt(y) }
+		}
+
+		if (block.class == "Channel") {
+			store.add_channel_as_node(block, pos)
+		} else if (block.base_class == "Block") {
+			console.log("adding block pos", pos)
+			store.add_block_as_node(block)
+		}
+	})
 
 })
 
@@ -234,6 +236,20 @@ const Block = (block, grouped = false) => {
 
 	if (block.class == "Text") return TextBlock(block, style, onmount)
 	if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style, onmount)
+	if (block.class == "Attachment") return AttachmentBlock(block, style, onmount)
+}
+
+const AttachmentBlock = (block, style: Function, onmount: () => void) => {
+	if (!block.source.attachment) return null
+	console.log("attaches block", block.source.attachment)
+	console.log("attaches block url", block.source.attachment.url)
+
+	mounted(onmount)
+	let s = "width:100%"
+
+	return html`
+		.block.attachment [style=${style} id=${"block-" + block.id}]
+			video [style=${s} src=${block.source.attachment.url} controls=true autoplay=true loop=true]`
 }
 
 const ImageBlock = (block, style: Function, onmount: () => void) => {
@@ -243,19 +259,19 @@ const ImageBlock = (block, style: Function, onmount: () => void) => {
 	let s = "width:100%"
 
 	return html`
-	.block.image [style=${style} id=${"block-" + block.id}] 
-		img [src=${image.display.url} style=${s}]`
+		.block.image[style = ${style} id = ${"block-" + block.id}]
+			img[src = ${image.display.url} style = ${s}]`
 }
 
 const TextBlock = (block, style, onmount) => {
 	let content = block.source.content
 
 	mounted(onmount)
-	return html`.block.text [style=${style} id=${"block-" + block.id}] -- ${MD(content)}`
+	return html`.block.text[style = ${style} id = ${"block-" + block.id}]--${MD(content)} `
 }
 
 const Channel = () => {
-	return html`each of ${mem(() => store.contents)} as ${Block}`
+	return html`each of ${mem(() => store.contents)} as ${Block} `
 }
 
 function save_block_coordinates() {
@@ -279,6 +295,19 @@ function save_block_coordinates() {
 document.addEventListener("keydown", (e) => {
 	if (e.key === "g") {
 		group_selected()
+	}
+
+	if (e.key === "d") {
+		// duplicate selected
+
+		let selected_elems = selected()
+		selected_elems.forEach((id) => {
+			let node = store.get_node(id)
+			if (!node) return
+
+			let new_node = { ...node, id: uid() }
+			store.contents.push(new_node)
+		})
 	}
 
 	if (e.key === "z") {
