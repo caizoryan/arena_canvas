@@ -7,7 +7,7 @@ export type CanvasPolyline = {
   id: number
   class: 'Path'
   base_class: 'Path'
-  points: (Position | DependentPosition)[]
+  points: Position[]
 }
 
 type DependentPosition = {
@@ -78,8 +78,33 @@ export class CanvasStore {
     }))
   }
 
-  get_lines(): CanvasPolyline[] {
-    return this.lines
+  add_line(points: Position[]) {
+    if (points.length == 1) {
+      points.push({ x: points[0].x + 100, y: points[0].y + 100 })
+    }
+
+    this.lines.push(mut({
+      id: this.lines.length + 1,
+      class: 'Path',
+      base_class: 'Path',
+      points: mut({ list: points }),
+    }))
+
+  }
+
+  add_point_to_line(line_id: number, point?: Position) {
+    const line = this.lines.find(line => line.id === line_id)
+    if (!line) return
+    if (point) {
+      line.points.push(point)
+    } else {
+      console.log(line)
+      let p = line.points.list[line.points.list.length - 1]
+      console.log(p)
+      if (!p) return
+      line.points.list.push({ x: p.x + 50, y: p.y + 50 })
+    }
+
   }
 
   check_if_node_exists(id: number): boolean {

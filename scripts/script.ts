@@ -335,8 +335,7 @@ const Line = (line: CanvasPolyline) => {
 
 const LineEditor = (line: CanvasPolyline) => {
 	return html`
-		each of ${line.points.list} as ${(point, i) => PointRect(point, i, line)}
-`
+		each of ${line.points.list} as ${(point, i) => PointRect(point, i, line)}`
 }
 
 const PointRect = (point, i, line) => {
@@ -474,7 +473,26 @@ document.addEventListener("keydown", (e) => {
 			recter_on.set(true)
 			panzoom.pause()
 		}
+	}
 
+	if (e.key === "A") {
+		if (current_line_id()) {
+			store.add_point_to_line(current_line_id())
+		}
+
+		else {
+			if (recter.style.display == "block") {
+				recter.style.display = "none"
+				recter_on.set(false)
+				panzoom.resume()
+			} else {
+				rect_event = (x, y, w, h) => {
+					store.add_line([{ x: x, y: y }, { x: x + w, y: y + h }])
+				}
+				recter.style.display = "block"
+				panzoom.pause()
+			}
+		}
 	}
 
 	if (e.key == "=" && (e.metaKey || e.ctrlKey)) {

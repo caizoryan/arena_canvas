@@ -3111,8 +3111,29 @@
         points: mut({ list: [{ x: 250, y: 500 }, { x: 100, y: 150 }, { x: 350, y: 100 }, { x: 200, y: 500 }] })
       }));
     }
-    get_lines() {
-      return this.lines;
+    add_line(points) {
+      if (points.length == 1) {
+        points.push({ x: points[0].x + 100, y: points[0].y + 100 });
+      }
+      this.lines.push(mut({
+        id: this.lines.length + 1,
+        class: "Path",
+        base_class: "Path",
+        points: mut({ list: points })
+      }));
+    }
+    add_point_to_line(line_id, point) {
+      const line = this.lines.find((line2) => line2.id === line_id);
+      if (!line) return;
+      if (point) {
+        line.points.push(point);
+      } else {
+        console.log(line);
+        let p6 = line.points.list[line.points.list.length - 1];
+        console.log(p6);
+        if (!p6) return;
+        line.points.list.push({ x: p6.x + 50, y: p6.y + 50 });
+      }
     }
     check_if_node_exists(id) {
       return this.contents.every((node) => node.id !== id);
@@ -6069,8 +6090,7 @@
   };
   var LineEditor = (line) => {
     return h2`
-		each of ${line.points.list} as ${(point, i6) => PointRect(point, i6, line)}
-`;
+		each of ${line.points.list} as ${(point, i6) => PointRect(point, i6, line)}`;
   };
   var PointRect = (point, i6, line) => {
     let x3 = mem(() => point.x);
@@ -6184,6 +6204,23 @@
         recter.style.display = "block";
         recter_on.set(true);
         panzoom.pause();
+      }
+    }
+    if (e4.key === "A") {
+      if (current_line_id()) {
+        store.add_point_to_line(current_line_id());
+      } else {
+        if (recter.style.display == "block") {
+          recter.style.display = "none";
+          recter_on.set(false);
+          panzoom.resume();
+        } else {
+          rect_event = (x3, y2, w4, h8) => {
+            store.add_line([{ x: x3, y: y2 }, { x: x3 + w4, y: y2 + h8 }]);
+          };
+          recter.style.display = "block";
+          panzoom.pause();
+        }
       }
     }
     if (e4.key == "=" && (e4.metaKey || e4.ctrlKey)) {
