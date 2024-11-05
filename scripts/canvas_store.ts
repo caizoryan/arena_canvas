@@ -70,12 +70,6 @@ export class CanvasStore {
 
   constructor() {
     this.contents = []
-    this.lines.push(mut({
-      id: 1,
-      class: 'Path',
-      base_class: 'Path',
-      points: mut({ list: [{ x: 250, y: 500 }, { x: 100, y: 150 }, { x: 350, y: 100 }, { x: 200, y: 500 }] }),
-    }))
   }
 
   add_line(points: Position[], _id?: number,) {
@@ -84,6 +78,9 @@ export class CanvasStore {
     }
 
     let id = _id ? _id : this.lines.length + 1
+    if (this.lines.find(line => line.id === id)) {
+      id = this.lines.length + 1
+    }
 
     this.lines.push(mut({
       id: id,
@@ -92,6 +89,10 @@ export class CanvasStore {
       points: mut({ list: points }),
     }))
 
+  }
+
+  delete_line(id: number) {
+    this.lines = this.lines.filter(line => line.id !== id)
   }
 
   add_point_to_line(line_id: number, point?: Position) {

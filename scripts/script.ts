@@ -1,11 +1,11 @@
-import { get_channel } from "./arena.ts";
+import { get_channel, update_block } from "./arena.ts";
 import { createPanZoom } from "./panzoom/panzoom.js"
 import { render, mut, mem, sig, html, mounted, eff_on } from "./solid_monke/solid_monke.js"
 import { drag } from "./drag.js";
 import { CanvasPolyline, CanvasStore } from "./canvas_store.ts";
 import { MD } from "./md.js";
 
-let channel_slug = "isp-presenting"
+let channel_slug = "isp-making-5-iteration-long-zooms"
 
 let selected = sig([])
 
@@ -182,7 +182,7 @@ function load_data() {
 
 }
 
-function save_data() {
+function create_save_data() {
 	let blocks: BlockData = []
 	let groups: GroupData = []
 	let lines: LineData = []
@@ -200,11 +200,20 @@ function save_data() {
 	})
 
 	let data: SaveData = { blocks: blocks, groups: groups, lines: lines }
+	return data
+}
+
+function save_data() {
+	let data = create_save_data()
 	localStorage.setItem(channel_slug, JSON.stringify(data))
 }
 
 get_channel(channel_slug).then((c) => {
 	let data = load_data()
+	let arena_canvas = c.contents.find((block) => block.title == ".arena-canvas")
+	if (arena_canvas) {
+		data = JSON.parse(arena_canvas.content)
+	}
 	c.contents.forEach((block) => {
 		if (block.base_class == "Block") {
 			let pos = data?.blocks?.find((b) => b.id == block.id)
@@ -356,7 +365,7 @@ const AttachmentBlock = (block, style: Function, onmount: () => void) => {
 
 	return html`
 		.block.attachment [style=${style} id=${"block-" + block.id}]
-			video [style=${s} src=${block.source.attachment.url} controls=true autoplay=true loop=true]`
+			video [style=${s} src=${block.source.attachment.url}  autoplay=true loop=true]`
 }
 
 const ImageBlock = (block, style: Function, onmount: () => void) => {
@@ -378,6 +387,7 @@ const TextBlock = (block, style, onmount) => {
 }
 
 const Line = (line: CanvasPolyline) => {
+	console.log("line", line)
 	let selected = mem(() => current_line_id() == line.id)
 
 	let coords = mem(() => line.points.list.map((point) => {
@@ -433,24 +443,6 @@ const Lines = () => {
 		`
 
 }
-
-function save_block_coordinates() {
-	let blocks = {}
-	let nodes = store.contents
-	nodes.forEach((node) => {
-		if (node.base_class == "Group") return
-
-		let id = node.id
-		let pos = store.get_global_position(id)
-		if (!pos) return
-
-		blocks[id] = { x: pos.x, y: pos.y, width: node.width, height: node.height }
-	})
-
-	localStorage.setItem(channel_slug, JSON.stringify(blocks))
-}
-
-
 
 document.addEventListener("keydown", (e) => {
 	if (e.key === "H") {
@@ -619,8 +611,20 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "ArrowUp") {
 	}
 
+	if (e.key === "D") {
+		if (current_line_id()) {
+			store.delete_line(current_line_id())
+		}
+	}
+
 	if (e.key === "S") {
-		save_data()
+		// if a block with title ".arena-canvas"
+		let canvas_data_block = store.contents.find((node) => node.base_class == "Block" && node.source.title == ".arena-canvas")
+		if (!canvas_data_block) save_data()
+		else {
+			update_block(canvas_data_block.id, { content: JSON.stringify(create_save_data()) }, channel_slug, false)
+			save_data()
+		}
 	}
 })
 

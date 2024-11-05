@@ -151,6 +151,7 @@ export const update_block = (block_id, body, slug, fuck = false) => {
     method: "PUT",
     body: JSON.stringify(body),
   }).then((res) => {
+    console.log(res)
     if (fuck) { fuck_refresh(slug) }
     return res
   });

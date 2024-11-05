@@ -24,6 +24,48 @@
       return data;
     });
   };
+  var update_block = (block_id, body, slug, fuck = false) => {
+    fetch(host + `blocks/${block_id}`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + auth
+      },
+      method: "PUT",
+      body: JSON.stringify(body)
+    }).then((res) => {
+      console.log(res);
+      if (fuck) {
+        fuck_refresh(slug);
+      }
+      return res;
+    });
+  };
+  var disconnect_block = (slug, id) => {
+    fetch(host + "channels/" + slug + "/blocks/" + id, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + auth
+      },
+      method: "DELETE"
+    }).then((res) => {
+      console.log(res);
+    });
+  };
+  var fuck_refresh = (slug) => {
+    fetch(host + "channels/" + slug + "/blocks", {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + auth
+      },
+      method: "POST",
+      body: JSON.stringify({
+        content: "temp"
+      })
+    }).then((response) => response.json()).then((data) => {
+      let block_id = data.id;
+      disconnect_block(slug, block_id);
+    });
+  };
 
   // scripts/panzoom/lib/bezier.js
   var NEWTON_ITERATIONS = 4;
@@ -3104,24 +3146,24 @@
     default_height = 300;
     constructor() {
       this.contents = [];
-      this.lines.push(mut({
-        id: 1,
-        class: "Path",
-        base_class: "Path",
-        points: mut({ list: [{ x: 250, y: 500 }, { x: 100, y: 150 }, { x: 350, y: 100 }, { x: 200, y: 500 }] })
-      }));
     }
     add_line(points, _id) {
       if (points.length == 1) {
         points.push({ x: points[0].x + 100, y: points[0].y + 100 });
       }
       let id = _id ? _id : this.lines.length + 1;
+      if (this.lines.find((line) => line.id === id)) {
+        id = this.lines.length + 1;
+      }
       this.lines.push(mut({
         id,
         class: "Path",
         base_class: "Path",
         points: mut({ list: points })
       }));
+    }
+    delete_line(id) {
+      this.lines = this.lines.filter((line) => line.id !== id);
     }
     add_point_to_line(line_id, point) {
       const line = this.lines.find((line2) => line2.id === line_id);
@@ -5842,7 +5884,7 @@
   };
 
   // scripts/script.ts
-  var channel_slug = "isp-presenting";
+  var channel_slug = "isp-making-5-iteration-long-zooms";
   var selected = sig([]);
   var store = mut(new CanvasStore());
   var current_block_id = sig(null);
@@ -5964,7 +6006,7 @@
     console.log("parsed", parsed);
     return parsed;
   }
-  function save_data() {
+  function create_save_data() {
     let blocks = [];
     let groups = [];
     let lines = [];
@@ -5979,10 +6021,18 @@
       lines.push({ id: line.id, points: line.points.list });
     });
     let data = { blocks, groups, lines };
+    return data;
+  }
+  function save_data() {
+    let data = create_save_data();
     localStorage.setItem(channel_slug, JSON.stringify(data));
   }
   get_channel(channel_slug).then((c6) => {
     let data = load_data();
+    let arena_canvas = c6.contents.find((block) => block.title == ".arena-canvas");
+    if (arena_canvas) {
+      data = JSON.parse(arena_canvas.content);
+    }
     c6.contents.forEach((block) => {
       if (block.base_class == "Block") {
         let pos2 = data?.blocks?.find((b2) => b2.id == block.id);
@@ -6108,7 +6158,7 @@
     let s4 = "width:100%";
     return h2`
 		.block.attachment [style=${style2} id=${"block-" + block.id}]
-			video [style=${s4} src=${block.source.attachment.url} controls=true autoplay=true loop=true]`;
+			video [style=${s4} src=${block.source.attachment.url}  autoplay=true loop=true]`;
   };
   var ImageBlock = (block, style2, onmount) => {
     let image = block.source.image;
@@ -6124,6 +6174,7 @@
     return h2`.block.text[style = ${style2} id = ${"block-" + block.id}]--${MD(content)} `;
   };
   var Line = (line) => {
+    console.log("line", line);
     let selected2 = mem(() => current_line_id() == line.id);
     let coords = mem(() => line.points.list.map((point) => {
       return `${point.x},${point.y}`;
@@ -6308,8 +6359,18 @@
     }
     if (e4.key === "ArrowUp") {
     }
+    if (e4.key === "D") {
+      if (current_line_id()) {
+        store.delete_line(current_line_id());
+      }
+    }
     if (e4.key === "S") {
-      save_data();
+      let canvas_data_block = store.contents.find((node) => node.base_class == "Block" && node.source.title == ".arena-canvas");
+      if (!canvas_data_block) save_data();
+      else {
+        update_block(canvas_data_block.id, { content: JSON.stringify(create_save_data()) }, channel_slug, false);
+        save_data();
+      }
     }
   });
   function uid() {
