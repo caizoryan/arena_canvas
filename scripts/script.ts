@@ -8,12 +8,35 @@ import { MD } from "./md.js";
 let channel_slug = "isp-presenting"
 
 let selected = sig([])
-let current_block_id = sig(null)
 
 let store: CanvasStore = mut(new CanvasStore())
+
+let current_block_id = sig(null)
+let current_group_id = sig(null)
+let current_line_id = sig(null)
+
+let selector = (type, id) => {
+	if (type == "block") {
+		current_block_id.set(id)
+		current_group_id.set(null)
+		current_line_id.set(null)
+	}
+	if (type == "group") {
+		current_group_id.set(id)
+		current_block_id.set(null)
+		current_line_id.set(null)
+	}
+	if (type == "line") {
+		current_line_id.set(id)
+		current_group_id.set(null)
+		current_block_id.set(null)
+	}
+}
+
 let current_block = mem(() => store.get_node(current_block_id()))
 
 let small_box = document.querySelector(".small-box")
+
 let recter = document.querySelector(".small-box-recter") as HTMLElement
 let recter_on = sig(false)
 
@@ -157,6 +180,7 @@ get_channel(channel_slug).then((c) => {
 })
 
 let panning = sig(true);
+let edit = sig(true)
 
 function intersecting(a, b) {
 	return (a.left <= b.right &&
@@ -206,6 +230,7 @@ const Group = (group) => {
 	let onmount = () => {
 		let elem = document.getElementById("group-" + group.id)
 		drag(elem, { set_left: (x) => { group.x = x }, set_top: (y) => { group.y = y } })
+		elem.onmouseover = () => { selector("group", group.id) }
 	}
 
 	mounted(onmount)
@@ -253,7 +278,7 @@ const Block = (block, grouped = false) => {
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
 		drag(elem, { set_left: set_x, set_top: set_y, pan_switch: panning })
-		elem.onmouseover = () => { current_block_id.set(block.id) }
+		elem.onmouseover = () => { selector("block", block.id) }
 	}
 
 	let block_selected = mem(() => selected().includes(block.id))
@@ -297,33 +322,37 @@ const TextBlock = (block, style, onmount) => {
 }
 
 const Line = (line: CanvasPolyline) => {
+	let selected = mem(() => current_line_id() == line.id)
 
 	let coords = mem(() => line.points.list.map((point) => {
 		return `${point.x},${point.y}`
 	}).join(" "))
 
-	return html`polyline [points=${coords} style=fill:none;stroke:black;stroke-width:2 ]`
+	let style = mem(() => `fill:none;stroke:black;stroke-width:2; stroke:${selected() ? "red" : "black"}`)
+
+	return html`polyline [points=${coords}  style=${style} ]`
 }
 
 const LineEditor = (line: CanvasPolyline) => {
 	return html`
-		each of ${line.points.list} as ${point => PointRect(point)}
+		each of ${line.points.list} as ${(point, i) => PointRect(point, i, line)}
 `
 }
 
-const PointRect = (point) => {
+const PointRect = (point, i, line) => {
 	let x = mem(() => point.x)
 	let y = mem(() => point.y)
-	let id = uid()
+	let id = "point-" + i() + line.id
 
 	let onmount = () => {
-		let elem = document.getElementById("point-" + id)
+		let elem = document.getElementById(id)
 		drag(elem, { bound: "none", set_left: (x) => { point.x = x }, set_top: (y) => { point.y = y } })
+		elem.onmouseover = () => { selector("line", line.id) }
 	}
 	mounted(onmount)
 
 	// return html`circle [id=${"point-" + id} cx=${x} cy=${y}   r=5 fill=red]`
-	return html`div.box [id=${"point-" + id} style=${mem(() => `position:absolute; left:${x()}px; top:${y()}px; width:10px; height:10px; background-color:red; border: 1px solid black`)}]`
+	return html`div.box [id=${id} style=${mem(() => `position:absolute; left:${x()}px; top:${y()}px; width:10px; height:10px; background-color:red; border: 1px solid black`)}]`
 }
 
 const Channel = () => {
@@ -332,15 +361,22 @@ const Channel = () => {
 }
 
 const Lines = () => {
-
 	let width = small_box.clientWidth
 	let height = small_box.clientHeight
+	let editor = mem(() => {
+		if (edit())
+			return html`
+				div
+					each of ${mem(() => store.lines)} as ${LineEditor}`
+	})
+
 	return html`
 		div
 			svg [width=${width} height=${height}]
 				each of ${mem(() => store.lines)} as ${Line}
-			div
-				each of ${mem(() => store.lines)} as ${LineEditor}`
+		div -- ${editor}
+		`
+
 }
 
 function save_block_coordinates() {
@@ -416,6 +452,11 @@ document.addEventListener("keydown", (e) => {
 			panzoom.pause()
 			recter_on.set(true)
 		}
+	}
+
+	if (e.key === "e") {
+		console.log("edit")
+		edit.set(!edit())
 	}
 
 	if (e.key === "v") {

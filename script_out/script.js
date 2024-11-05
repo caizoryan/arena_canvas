@@ -5807,8 +5807,27 @@
   // scripts/script.ts
   var channel_slug = "isp-presenting";
   var selected = sig([]);
-  var current_block_id = sig(null);
   var store = mut(new CanvasStore());
+  var current_block_id = sig(null);
+  var current_group_id = sig(null);
+  var current_line_id = sig(null);
+  var selector = (type, id) => {
+    if (type == "block") {
+      current_block_id.set(id);
+      current_group_id.set(null);
+      current_line_id.set(null);
+    }
+    if (type == "group") {
+      current_group_id.set(id);
+      current_block_id.set(null);
+      current_line_id.set(null);
+    }
+    if (type == "line") {
+      current_line_id.set(id);
+      current_group_id.set(null);
+      current_block_id.set(null);
+    }
+  };
   var current_block = mem(() => store.get_node(current_block_id()));
   var small_box = document.querySelector(".small-box");
   var recter = document.querySelector(".small-box-recter");
@@ -5924,6 +5943,7 @@
     });
   });
   var panning = sig(true);
+  var edit = sig(true);
   function intersecting(a6, b2) {
     return a6.left <= b2.right && b2.left <= a6.right && a6.top <= b2.bottom && b2.top <= a6.bottom;
   }
@@ -5963,6 +5983,9 @@
       }, set_top: (y3) => {
         group.y = y3;
       } });
+      elem.onmouseover = () => {
+        selector("group", group.id);
+      };
     };
     mounted(onmount);
     let style2 = mem(() => `
@@ -6003,7 +6026,7 @@
       let elem = document.getElementById("block-" + block.id);
       drag(elem, { set_left: set_x, set_top: set_y, pan_switch: panning });
       elem.onmouseover = () => {
-        current_block_id.set(block.id);
+        selector("block", block.id);
       };
     };
     let block_selected = mem(() => selected().includes(block.id));
@@ -6037,30 +6060,35 @@
     return h2`.block.text[style = ${style2} id = ${"block-" + block.id}]--${MD(content)} `;
   };
   var Line = (line) => {
+    let selected2 = mem(() => current_line_id() == line.id);
     let coords = mem(() => line.points.list.map((point) => {
       return `${point.x},${point.y}`;
     }).join(" "));
-    return h2`polyline [points=${coords} style=fill:none;stroke:black;stroke-width:2 ]`;
+    let style2 = mem(() => `fill:none;stroke:black;stroke-width:2; stroke:${selected2() ? "red" : "black"}`);
+    return h2`polyline [points=${coords}  style=${style2} ]`;
   };
   var LineEditor = (line) => {
     return h2`
-		each of ${line.points.list} as ${(point) => PointRect(point)}
+		each of ${line.points.list} as ${(point, i6) => PointRect(point, i6, line)}
 `;
   };
-  var PointRect = (point) => {
+  var PointRect = (point, i6, line) => {
     let x3 = mem(() => point.x);
     let y2 = mem(() => point.y);
-    let id = uid();
+    let id = "point-" + i6() + line.id;
     let onmount = () => {
-      let elem = document.getElementById("point-" + id);
+      let elem = document.getElementById(id);
       drag(elem, { bound: "none", set_left: (x4) => {
         point.x = x4;
       }, set_top: (y3) => {
         point.y = y3;
       } });
+      elem.onmouseover = () => {
+        selector("line", line.id);
+      };
     };
     mounted(onmount);
-    return h2`div.box [id=${"point-" + id} style=${mem(() => `position:absolute; left:${x3()}px; top:${y2()}px; width:10px; height:10px; background-color:red; border: 1px solid black`)}]`;
+    return h2`div.box [id=${id} style=${mem(() => `position:absolute; left:${x3()}px; top:${y2()}px; width:10px; height:10px; background-color:red; border: 1px solid black`)}]`;
   };
   var Channel = () => {
     return h2`
@@ -6069,12 +6097,18 @@
   var Lines = () => {
     let width = small_box.clientWidth;
     let height = small_box.clientHeight;
+    let editor = mem(() => {
+      if (edit())
+        return h2`
+				div
+					each of ${mem(() => store.lines)} as ${LineEditor}`;
+    });
     return h2`
 		div
 			svg [width=${width} height=${height}]
 				each of ${mem(() => store.lines)} as ${Line}
-			div
-				each of ${mem(() => store.lines)} as ${LineEditor}`;
+		div -- ${editor}
+		`;
   };
   function save_block_coordinates() {
     let blocks = {};
@@ -6132,6 +6166,10 @@
         panzoom.pause();
         recter_on.set(true);
       }
+    }
+    if (e4.key === "e") {
+      console.log("edit");
+      edit.set(!edit());
     }
     if (e4.key === "v") {
       panning.set(!panning());
