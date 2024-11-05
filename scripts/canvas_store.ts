@@ -1,6 +1,20 @@
 import { Block, Channel } from "./arena"
+import { mut } from "./solid_monke/solid_monke"
 
 type CanvasNode = CanvasGroup | CanvasBlock | CanvasChannel
+
+export type CanvasPolyline = {
+  id: number
+  class: 'Path'
+  base_class: 'Path'
+  points: (Position | DependentPosition)[]
+}
+
+type DependentPosition = {
+  id: number
+  base_class: 'Block' | 'Channel' | 'Group'
+  from: 'top' | 'bottom' | 'left' | 'right'
+}
 
 type CanvasGroup = {
   id: number
@@ -49,12 +63,23 @@ type Dimension = {
 
 export class CanvasStore {
   contents: CanvasNode[]
+  lines: CanvasPolyline[] = []
   max_x = 2500
   default_width = 300
   default_height = 300
 
   constructor() {
     this.contents = []
+    this.lines.push(mut({
+      id: 1,
+      class: 'Path',
+      base_class: 'Path',
+      points: mut({ list: [{ x: 250, y: 500 }, { x: 100, y: 150 }, { x: 350, y: 100 }, { x: 200, y: 500 }] }),
+    }))
+  }
+
+  get_lines(): CanvasPolyline[] {
+    return this.lines
   }
 
   check_if_node_exists(id: number): boolean {
@@ -117,7 +142,6 @@ export class CanvasStore {
 
   add_group_as_node(id: number, children: number[], position: Position, dimension: Dimension): CanvasNode | undefined {
     if (this.check_if_node_exists(id)) {
-      console.log(children)
       const node: CanvasNode = {
         id: id,
         class: 'Group',
@@ -137,8 +161,9 @@ export class CanvasStore {
   get_node(id: number): CanvasNode | undefined {
     return this.contents.find(node => node.id === id)
   }
+
   get_children(id: number): CanvasNode[] {
-    return this.contents.filter(node => node.children.includes(id))
+    return this.contents.filter(node => node.children ? node.children.includes(id) : false)
   }
 
   get_position(id: number): Position | undefined {

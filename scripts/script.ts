@@ -2,16 +2,20 @@ import { get_channel } from "./arena.ts";
 import { createPanZoom } from "./panzoom/panzoom.js"
 import { render, mut, mem, sig, html, mounted, eff_on } from "./solid_monke/solid_monke.js"
 import { drag } from "./drag.js";
-import { CanvasStore } from "./canvas_store.ts";
+import { CanvasPolyline, CanvasStore } from "./canvas_store.ts";
 import { MD } from "./md.js";
 
-let channel_slug = "project-labour-class"
+let channel_slug = "isp-presenting"
 
 let selected = sig([])
+let current_block_id = sig(null)
+
 let store: CanvasStore = mut(new CanvasStore())
+let current_block = mem(() => store.get_node(current_block_id()))
 
 let small_box = document.querySelector(".small-box")
 let recter = document.querySelector(".small-box-recter") as HTMLElement
+let recter_on = sig(false)
 
 let panzoom = createPanZoom(small_box, {})
 
@@ -105,8 +109,9 @@ let rectange_maker = (elem) => {
 
 			rect?.remove()
 			rect = null
-
 			recter.style.display = "none"
+			recter_on.set(false)
+
 			panzoom.resume()
 
 			if ("function" == typeof rect_event) rect_event(x, y, w, h)
@@ -205,12 +210,31 @@ const Group = (group) => {
 
 	mounted(onmount)
 
-	let style = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:rgba(0, 0, 0, 0.1)`)
+	let style = mem(() => `
+		left: ${x()}px;
+		top: ${y()}px;
+		width: ${width()}px;
+		height: ${height()}px;
+		background-color: rgba(0, 0, 0, 0.1)
+	`)
 
 	return html`
 	.block.group [style=${style} id=${"group-" + group.id}] 
 		each of ${children_nodes} as ${b => Block(b, true)}`
 }
+
+const State = () => {
+	let mode = mem(() => panning() ? "Panning" : "Selecting")
+	let recter_on_is = mem(() => recter_on() ? "on" : "off")
+	return html`
+		.state
+			p -- Mode (v): ${mode}
+			p -- Recter (z/s):${recter_on_is}
+			p -- ${current_block_id}
+		`
+}
+
+
 const Block = (block, grouped = false) => {
 	if (store.check_if_node_in_group(block.id) && !grouped) { return null }
 	if (block.base_class == "Group") return Group(block)
@@ -229,10 +253,12 @@ const Block = (block, grouped = false) => {
 	let onmount = () => {
 		let elem = document.getElementById("block-" + block.id)
 		drag(elem, { set_left: set_x, set_top: set_y, pan_switch: panning })
+		elem.onmouseover = () => { current_block_id.set(block.id) }
 	}
 
 	let block_selected = mem(() => selected().includes(block.id))
-	let style = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:${block_selected() ? "red" : "white"}`)
+	let current_block = mem(() => current_block_id() == block.id)
+	let style = mem(() => `left:${x()}px; top:${y()}px; width:${width()}px; height:${height()}px;background-color:${block_selected() ? "red" : "white"}; border: ${current_block() ? "2px solid black" : "none"}`)
 
 	if (block.class == "Text") return TextBlock(block, style, onmount)
 	if (block.class == "Image" || block.class == "Link") return ImageBlock(block, style, onmount)
@@ -270,8 +296,51 @@ const TextBlock = (block, style, onmount) => {
 	return html`.block.text[style = ${style} id = ${"block-" + block.id}]--${MD(content)} `
 }
 
+const Line = (line: CanvasPolyline) => {
+
+	let coords = mem(() => line.points.list.map((point) => {
+		return `${point.x},${point.y}`
+	}).join(" "))
+
+	return html`polyline [points=${coords} style=fill:none;stroke:black;stroke-width:2 ]`
+}
+
+const LineEditor = (line: CanvasPolyline) => {
+	return html`
+		each of ${line.points.list} as ${point => PointRect(point)}
+`
+}
+
+const PointRect = (point) => {
+	let x = mem(() => point.x)
+	let y = mem(() => point.y)
+	let id = uid()
+
+	let onmount = () => {
+		let elem = document.getElementById("point-" + id)
+		drag(elem, { bound: "none", set_left: (x) => { point.x = x }, set_top: (y) => { point.y = y } })
+	}
+	mounted(onmount)
+
+	// return html`circle [id=${"point-" + id} cx=${x} cy=${y}   r=5 fill=red]`
+	return html`div.box [id=${"point-" + id} style=${mem(() => `position:absolute; left:${x()}px; top:${y()}px; width:10px; height:10px; background-color:red; border: 1px solid black`)}]`
+}
+
 const Channel = () => {
-	return html`each of ${mem(() => store.contents)} as ${Block} `
+	return html`
+		each of ${mem(() => store.contents)} as ${Block}`
+}
+
+const Lines = () => {
+
+	let width = small_box.clientWidth
+	let height = small_box.clientHeight
+	return html`
+		div
+			svg [width=${width} height=${height}]
+				each of ${mem(() => store.lines)} as ${Line}
+			div
+				each of ${mem(() => store.lines)} as ${LineEditor}`
 }
 
 function save_block_coordinates() {
@@ -293,6 +362,22 @@ function save_block_coordinates() {
 
 
 document.addEventListener("keydown", (e) => {
+	if (e.key === "H") {
+		current_block().width = current_block().width - 10
+	}
+
+	if (e.key === "L") {
+		current_block().width = current_block().width + 10
+	}
+
+	if (e.key === "K") {
+		current_block().height = current_block().height - 10
+	}
+
+	if (e.key === "J") {
+		current_block().height = current_block().height + 10
+	}
+
 	if (e.key === "g") {
 		group_selected()
 	}
@@ -314,6 +399,7 @@ document.addEventListener("keydown", (e) => {
 		if (recter.style.display == "block") {
 			recter.style.display = "none"
 			panzoom.resume()
+			recter_on.set(false)
 		} else {
 			rect_event = (x, y, w, h) => {
 				let r = {
@@ -325,8 +411,10 @@ document.addEventListener("keydown", (e) => {
 
 				panzoom.showRectangle(r)
 			}
+
 			recter.style.display = "block"
 			panzoom.pause()
+			recter_on.set(true)
 		}
 	}
 
@@ -337,10 +425,12 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "s") {
 		if (recter.style.display == "block") {
 			recter.style.display = "none"
+			recter_on.set(false)
 			panzoom.resume()
 		} else {
 			rect_event = intersecting_blocks
 			recter.style.display = "block"
+			recter_on.set(true)
 			panzoom.pause()
 		}
 
@@ -427,3 +517,5 @@ function group_selected() {
 }
 
 render(Channel, document.querySelector(".small-box"))
+render(Lines, document.querySelector(".small-box"))
+render(State, document.body)

@@ -105,7 +105,6 @@ export const drag = (elem, options = {}) => {
 			// check parent till no parent
 			while (buffer !== document.body) {
 				if (buffer === target) {
-					console.log("foudn", buffer)
 					return buffer;
 				}
 				else buffer = buffer.parentNode
@@ -123,7 +122,6 @@ export const drag = (elem, options = {}) => {
 		if (!pann) return;
 		e.preventDefault();
 		e.stopPropagation();
-		console.log(e.movementX, e.movementY);
 
 		const deltaX = e.movementX / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
 		const deltaY = e.movementY / parentScale;// vvpScale It's pinch default gesture zoom (Android). Ignore in Desktop
