@@ -3111,12 +3111,13 @@
         points: mut({ list: [{ x: 250, y: 500 }, { x: 100, y: 150 }, { x: 350, y: 100 }, { x: 200, y: 500 }] })
       }));
     }
-    add_line(points) {
+    add_line(points, _id) {
       if (points.length == 1) {
         points.push({ x: points[0].x + 100, y: points[0].y + 100 });
       }
+      let id = _id ? _id : this.lines.length + 1;
       this.lines.push(mut({
-        id: this.lines.length + 1,
+        id,
         class: "Path",
         base_class: "Path",
         points: mut({ list: points })
@@ -3151,17 +3152,18 @@
         return { x: x3, y: y2 };
       }
     }
-    add_block_as_node(block, position) {
+    add_block_as_node(block, position, dimension) {
       if (this.check_if_node_exists(block.id)) {
-        const pos = position ? position : this.get_position_after_previous();
+        const pos2 = position ? position : this.get_position_after_previous();
+        const dim = dimension ? dimension : { width: this.default_width, height: this.default_height };
         const node = {
           id: block.id,
           class: block.class,
           base_class: "Block",
-          x: pos.x,
-          y: pos.y,
-          width: this.default_width,
-          height: this.default_height,
+          x: pos2.x,
+          y: pos2.y,
+          width: dim.width,
+          height: dim.height,
           children: [],
           source: block
         };
@@ -3171,13 +3173,13 @@
     }
     add_channel_as_node(channel, position) {
       if (this.check_if_node_exists(channel.id)) {
-        const pos = position ? position : this.get_position_after_previous();
+        const pos2 = position ? position : this.get_position_after_previous();
         const node = {
           id: channel.id,
           class: "Channel",
           base_class: "Channel",
-          x: pos.x,
-          y: pos.y,
+          x: pos2.x,
+          y: pos2.y,
           width: this.default_width,
           height: this.default_height,
           children: [],
@@ -3202,6 +3204,20 @@
         this.contents.push(node);
         return node;
       }
+    }
+    remove_group(id) {
+      let group = this.get_node(id);
+      let children2 = group ? group.children : [];
+      let group_position = this.get_position(id);
+      if (!group_position) return;
+      children2.forEach((child_id) => {
+        let child = this.get_node(child_id);
+        if (child) {
+          child.x = child.x + group_position.x;
+          child.y = child.y + group_position.y;
+        }
+      });
+      this.contents = this.contents.filter((node) => node.id !== id);
     }
     get_node(id) {
       return this.contents.find((node) => node.id === id);
@@ -5941,26 +5957,52 @@
     }
   };
   rectange_maker(recter);
+  function load_data() {
+    let data = localStorage.getItem(channel_slug);
+    if (!data) return;
+    let parsed = JSON.parse(data);
+    console.log("parsed", parsed);
+    return parsed;
+  }
+  function save_data() {
+    let blocks = [];
+    let groups = [];
+    let lines = [];
+    store.contents.forEach((node) => {
+      if (node.base_class == "Group") {
+        groups.push({ id: node.id, x: node.x, y: node.y, width: node.width, height: node.height, children: node.children });
+      } else {
+        blocks.push({ id: node.id, x: node.x, y: node.y, width: node.width, height: node.height });
+      }
+    });
+    store.lines.forEach((line) => {
+      lines.push({ id: line.id, points: line.points.list });
+    });
+    let data = { blocks, groups, lines };
+    localStorage.setItem(channel_slug, JSON.stringify(data));
+  }
   get_channel(channel_slug).then((c6) => {
-    let blocks_cache = localStorage.getItem(channel_slug);
-    console.log("", c6);
-    let blocks;
-    if (blocks_cache) {
-      blocks = JSON.parse(blocks_cache);
-    }
+    let data = load_data();
     c6.contents.forEach((block) => {
-      let pos;
-      if (blocks) {
-        let x3 = blocks[block.id].x;
-        let y2 = blocks[block.id].y;
-        pos = { x: parseInt(x3), y: parseInt(y2) };
-      }
-      if (block.class == "Channel") {
+      if (block.base_class == "Block") {
+        let pos2 = data?.blocks?.find((b2) => b2.id == block.id);
+        if (pos2) {
+          store.add_block_as_node(block, { x: pos2.x, y: pos2.y }, { width: pos2.width, height: pos2.height });
+        } else {
+          console.log("no pos", block);
+          store.add_block_as_node(block);
+        }
+      } else if (block.class == "Channel") {
         store.add_channel_as_node(block, pos);
-      } else if (block.base_class == "Block") {
-        console.log("adding block pos", pos);
-        store.add_block_as_node(block);
       }
+    });
+    data?.groups?.forEach((g5) => {
+      store.add_group_as_node(g5.id, g5.children, { x: g5.x, y: g5.y }, { width: g5.width, height: g5.height });
+    });
+    data?.lines?.forEach((l6) => {
+      store.add_line(l6.points.map((point) => {
+        return { x: point.x, y: point.y };
+      }), l6.id);
     });
   });
   var panning = sig(true);
@@ -6004,7 +6046,8 @@
       }, set_top: (y3) => {
         group.y = y3;
       } });
-      elem.onmouseover = () => {
+      elem.onmouseover = (e4) => {
+        if (e4.target !== e4.currentTarget) return;
         selector("group", group.id);
       };
     };
@@ -6130,33 +6173,54 @@
 		div -- ${editor}
 		`;
   };
-  function save_block_coordinates() {
-    let blocks = {};
-    let nodes = store.contents;
-    nodes.forEach((node) => {
-      if (node.base_class == "Group") return;
-      let id = node.id;
-      let pos = store.get_global_position(id);
-      if (!pos) return;
-      blocks[id] = { x: pos.x, y: pos.y, width: node.width, height: node.height };
-    });
-    localStorage.setItem(channel_slug, JSON.stringify(blocks));
-  }
   document.addEventListener("keydown", (e4) => {
     if (e4.key === "H") {
-      current_block().width = current_block().width - 10;
+      if (current_block_id()) {
+        current_block().width = current_block().width - 10;
+      }
+      if (current_group_id()) {
+        let group = store.get_node(current_group_id());
+        if (!group) return;
+        group.width = group.width - 10;
+      }
     }
     if (e4.key === "L") {
-      current_block().width = current_block().width + 10;
+      if (current_block_id()) {
+        current_block().width = current_block().width + 10;
+      }
+      if (current_group_id()) {
+        let group = store.get_node(current_group_id());
+        if (!group) return;
+        group.width = group.width + 10;
+      }
     }
     if (e4.key === "K") {
-      current_block().height = current_block().height - 10;
+      if (current_block_id()) {
+        current_block().height = current_block().height - 10;
+      }
+      if (current_group_id()) {
+        let group = store.get_node(current_group_id());
+        if (!group) return;
+        group.height = group.height;
+      }
     }
     if (e4.key === "J") {
-      current_block().height = current_block().height + 10;
+      if (current_block_id()) {
+        current_block().height = current_block().height + 10;
+      }
+      if (current_group_id()) {
+        let group = store.get_node(current_group_id());
+        if (!group) return;
+        group.height = group.height + 10;
+      }
     }
     if (e4.key === "g") {
       group_selected();
+    }
+    if (e4.key === "G") {
+      if (current_group_id()) {
+        store.remove_group(current_group_id());
+      }
     }
     if (e4.key === "d") {
       let selected_elems = selected();
@@ -6244,8 +6308,8 @@
     }
     if (e4.key === "ArrowUp") {
     }
-    if (e4.key === "s") {
-      save_block_coordinates();
+    if (e4.key === "S") {
+      save_data();
     }
   });
   function uid() {

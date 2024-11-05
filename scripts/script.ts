@@ -145,36 +145,89 @@ let rectange_maker = (elem) => {
 
 rectange_maker(recter)
 
-type BlockCache = {
-	pos: {
-		x: number,
-		y: number
-	}
+type BlockData = {
+	id: number,
+	x: number,
+	y: number
+	width: number,
+	height: number,
+}
+
+type GroupData = {
+	id: number,
+	x: number,
+	y: number
+	width: number,
+	height: number,
+	children: number[]
+}
+
+type LineData = {
+	id: number,
+	points: { x: number, y: number }[]
+}
+
+type SaveData = {
+	blocks: BlockData[]
+	groups: GroupData[]
+	lines: LineData[]
+}
+
+function load_data() {
+	let data = localStorage.getItem(channel_slug)
+	if (!data) return
+	let parsed = JSON.parse(data)
+	console.log("parsed", parsed)
+	return parsed
+
+}
+
+function save_data() {
+	let blocks: BlockData = []
+	let groups: GroupData = []
+	let lines: LineData = []
+
+	store.contents.forEach((node) => {
+		if (node.base_class == "Group") {
+			groups.push({ id: node.id, x: node.x, y: node.y, width: node.width, height: node.height, children: node.children })
+		} else {
+			blocks.push({ id: node.id, x: node.x, y: node.y, width: node.width, height: node.height })
+		}
+	})
+
+	store.lines.forEach((line) => {
+		lines.push({ id: line.id, points: line.points.list })
+	})
+
+	let data: SaveData = { blocks: blocks, groups: groups, lines: lines }
+	localStorage.setItem(channel_slug, JSON.stringify(data))
 }
 
 get_channel(channel_slug).then((c) => {
-	let blocks_cache = localStorage.getItem(channel_slug)
-	console.log("", c)
-	let blocks: BlockCache
-	if (blocks_cache) {
-		blocks = JSON.parse(blocks_cache)
-	}
-
+	let data = load_data()
 	c.contents.forEach((block) => {
-		let pos
-
-		if (blocks) {
-			let x = blocks[block.id].x
-			let y = blocks[block.id].y
-			pos = { x: parseInt(x), y: parseInt(y) }
+		if (block.base_class == "Block") {
+			let pos = data?.blocks?.find((b) => b.id == block.id)
+			if (pos) {
+				store.add_block_as_node(block, { x: pos.x, y: pos.y }, { width: pos.width, height: pos.height })
+			} else {
+				console.log("no pos", block)
+				store.add_block_as_node(block)
+			}
 		}
 
-		if (block.class == "Channel") {
+		else if (block.class == "Channel") {
 			store.add_channel_as_node(block, pos)
-		} else if (block.base_class == "Block") {
-			console.log("adding block pos", pos)
-			store.add_block_as_node(block)
 		}
+
+	})
+
+	data?.groups?.forEach((g) => {
+		store.add_group_as_node(g.id, g.children, { x: g.x, y: g.y }, { width: g.width, height: g.height })
+	})
+
+	data?.lines?.forEach((l) => {
+		store.add_line(l.points.map((point) => { return { x: point.x, y: point.y } }), l.id)
 	})
 
 })
@@ -230,7 +283,10 @@ const Group = (group) => {
 	let onmount = () => {
 		let elem = document.getElementById("group-" + group.id)
 		drag(elem, { set_left: (x) => { group.x = x }, set_top: (y) => { group.y = y } })
-		elem.onmouseover = () => { selector("group", group.id) }
+		elem.onmouseover = (e) => {
+			if (e.target !== e.currentTarget) return;
+			selector("group", group.id)
+		}
 	}
 
 	mounted(onmount)
@@ -398,23 +454,61 @@ function save_block_coordinates() {
 
 document.addEventListener("keydown", (e) => {
 	if (e.key === "H") {
-		current_block().width = current_block().width - 10
+		if (current_block_id()) {
+			current_block().width = current_block().width - 10
+		}
+
+		if (current_group_id()) {
+			let group = store.get_node(current_group_id())
+			if (!group) return
+			group.width = group.width - 10
+		}
 	}
 
 	if (e.key === "L") {
-		current_block().width = current_block().width + 10
+		if (current_block_id()) {
+			current_block().width = current_block().width + 10
+		}
+
+		if (current_group_id()) {
+			let group = store.get_node(current_group_id())
+			if (!group) return
+			group.width = group.width + 10
+		}
 	}
 
 	if (e.key === "K") {
-		current_block().height = current_block().height - 10
+		if (current_block_id()) {
+			current_block().height = current_block().height - 10
+		}
+
+		if (current_group_id()) {
+			let group = store.get_node(current_group_id())
+			if (!group) return
+			group.height = group.height
+		}
 	}
 
 	if (e.key === "J") {
-		current_block().height = current_block().height + 10
+		if (current_block_id()) {
+			current_block().height = current_block().height + 10
+		}
+
+		if (current_group_id()) {
+			let group = store.get_node(current_group_id())
+			if (!group) return
+			group.height = group.height + 10
+		}
 	}
 
 	if (e.key === "g") {
 		group_selected()
+	}
+
+	if (e.key === "G") {
+		if (current_group_id()) {
+			store.remove_group(current_group_id())
+		}
 	}
 
 	if (e.key === "d") {
@@ -525,8 +619,8 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "ArrowUp") {
 	}
 
-	if (e.key === "s") {
-		save_block_coordinates()
+	if (e.key === "S") {
+		save_data()
 	}
 })
 

@@ -78,13 +78,15 @@ export class CanvasStore {
     }))
   }
 
-  add_line(points: Position[]) {
+  add_line(points: Position[], _id?: number,) {
     if (points.length == 1) {
       points.push({ x: points[0].x + 100, y: points[0].y + 100 })
     }
 
+    let id = _id ? _id : this.lines.length + 1
+
     this.lines.push(mut({
-      id: this.lines.length + 1,
+      id: id,
       class: 'Path',
       base_class: 'Path',
       points: mut({ list: points }),
@@ -125,9 +127,10 @@ export class CanvasStore {
     }
   }
 
-  add_block_as_node(block: Block, position?: Position): CanvasNode | undefined {
+  add_block_as_node(block: Block, position?: Position, dimension?: Dimension): CanvasNode | undefined {
     if (this.check_if_node_exists(block.id)) {
       const pos = position ? position : this.get_position_after_previous()
+      const dim = dimension ? dimension : { width: this.default_width, height: this.default_height }
 
       const node: CanvasNode = {
         id: block.id,
@@ -135,8 +138,8 @@ export class CanvasStore {
         base_class: "Block",
         x: pos.x,
         y: pos.y,
-        width: this.default_width,
-        height: this.default_height,
+        width: dim.width,
+        height: dim.height,
         children: [],
         source: block
       }
@@ -181,6 +184,25 @@ export class CanvasStore {
       this.contents.push(node)
       return node
     }
+  }
+
+  remove_group(id: number) {
+    // give children position of group + their own position
+    let group = this.get_node(id)
+    let children = group ? group.children : []
+    let group_position = this.get_position(id)
+
+    if (!group_position) return
+
+    children.forEach(child_id => {
+      let child = this.get_node(child_id)
+      if (child) {
+        child.x = child.x + group_position.x
+        child.y = child.y + group_position.y
+      }
+    })
+
+    this.contents = this.contents.filter(node => node.id !== id)
   }
 
   get_node(id: number): CanvasNode | undefined {
